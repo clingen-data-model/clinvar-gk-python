@@ -5,7 +5,7 @@ description = "Conversion of ClinVar Variation expressions to GA4GH GKS forms"
 readme = "README.md"
 requires-python = ">=3.11"
 keywords = ["bioinformatics", "clinvar"]
-license = { text = "Apache-2.0" }
+license = { text = "MIT" }
 classifiers = ["Programming Language :: Python :: 3"]
 dependencies = [
     "google-cloud-storage~=2.14.0",
