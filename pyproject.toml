@@ -1,0 +1,39 @@
+[project]
+name = "clinvar_gk_pilot"
+authors = [{ name = "Kyle Ferriter", email = "kferrite@broadinstitute.org" }]
+description = "Conversion of ClinVar Variation expressions to GA4GH GKS forms"
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["bioinformatics", "clinvar"]
+license = { text = "Apache-2.0" }
+classifiers = ["Programming Language :: Python :: 3"]
+dependencies = [
+    "google-cloud-storage~=2.14.0",
+
+    # Include the tag 2.0.0-a4 from git repo https://github.com/ga4gh/vrs-python
+    "ga4gh.vrs@git+https://github.com/ga4gh/vrs-python#egg=2.0.0-a4",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+dev = [
+    "ipykernel",
+    "black~=23.9.1",
+    "isort~=5.12.0",
+    "ruff~=0.1.5",
+    "pytest~=7.4.3",
+    "pylint~=3.0.2",
+]
+
+# [project.scripts]
+# clinvar-ingest = "clinvar_ingest.main:main"
+
+[tool.setuptools.packages.find]
+include = ["clinvar_gk_pilot*"]
+
+# [tool.setuptools.package-data]
+# "clinvar_ingest" = ["*.json", ".*.env"]
+# "clinvar_ingest.cloud.bigquery.bq_json_schemas" = ["*.json"]
+
+[tool.isort]
+profile = "black"
