@@ -1,0 +1,48 @@
+name: CI
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install '.[dev]'
+      - name: Black formatting
+        run: black --check clinvar_gk_pilot
+      - name: Sort imports
+        run: isort --check-only clinvar_gk_pilot
+      - name: Ruff lint
+        run: ruff check clinvar_gk_pilot
+      # Pylint catches some things that Ruff doesn't yet support
+      # Run error-only mode `--disable=C,R,W` == `-E`
+      - name: Pylint
+        run: pylint --disable=C,R,W clinvar_gk_pilot
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install '.[dev]'
+      - name: Run tests
+        run: pytest -v
