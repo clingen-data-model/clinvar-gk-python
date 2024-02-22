@@ -1,4 +1,3 @@
-import logging
 import queue
 import subprocess
 import threading
@@ -8,9 +7,8 @@ from pathlib import Path, PurePath
 import requests
 from google.cloud import storage
 
+from clinvar_gk_pilot.logger import logger
 from clinvar_gk_pilot.utils import make_progress_logger
-
-_logger = logging.getLogger("clinvar_gk_pilot")
 
 
 def _get_gcs_client() -> storage.Client:
@@ -37,12 +35,12 @@ def copy_file_to_bucket(
     """
     Upload the contents of file `local_file_uri` on local filesystem, to `remote_blob_uri` in
     """
-    _logger.info(f"Uploading {local_file_uri} to {remote_blob_uri}")
+    logger.info(f"Uploading {local_file_uri} to {remote_blob_uri}")
     if client is None:
         client = _get_gcs_client()
     blob = parse_blob_uri(remote_blob_uri, client=client)
     blob.upload_from_filename(client=client, filename=local_file_uri)
-    _logger.info(f"Finished uploading {local_file_uri} to {remote_blob_uri}")
+    logger.info(f"Finished uploading {local_file_uri} to {remote_blob_uri}")
 
 
 def blob_writer(
@@ -89,7 +87,7 @@ def http_download_requests(
     """
     Download the contents of `http_uri` to `local_path` using requests.get
     """
-    _logger.info(f"Downloading {http_uri} to {local_path}")
+    logger.info(f"Downloading {http_uri} to {local_path}")
 
     bytes_read = 0
     response = requests.get(http_uri, stream=True, timeout=10)
@@ -97,7 +95,7 @@ def http_download_requests(
     opened_file_size = int(response.headers.get("Content-Length"))
 
     log_progress = make_progress_logger(
-        logger=_logger,
+        logger=logger,
         fmt="Read {elapsed_value} bytes in {elapsed:.2f} seconds. Total bytes read: {current_value}/{max_value}.",
         max_value=opened_file_size,
     )
@@ -118,7 +116,7 @@ def http_download_requests(
 
             if len(chunk) == 0:
                 wait_time = 10
-                _logger.warning(
+                logger.warning(
                     f"Received an empty chunk from {http_uri} at byte {bytes_read}. Pausing {wait_time} seconds"
                 )
                 time.sleep(wait_time)
@@ -163,22 +161,21 @@ def http_download_curl(
                 break
             except queue.Empty:
                 if not path.exists():
-                    _logger.info(f"{path} does not exist")
+                    logger.info(f"{path} does not exist")
                 else:
-                    _logger.info(f"{path} size: {path.stat().st_size}")
+                    logger.info(f"{path} size: {path.stat().st_size}")
             time.sleep(10)
 
     t_stat_stop = queue.Queue()
-    t_stat = threading.Thread(
-        target=file_stat, args=(Path(local_path), t_stat_stop))
+    t_stat = threading.Thread(target=file_stat, args=(Path(local_path), t_stat_stop))
     t_stat.start()
 
     for _ in range(2):
         for pipe, line in iter(q.get, None):
-            _logger.info(f"{pipe}: {line.decode('utf-8')}")
+            logger.info(f"{pipe}: {line.decode('utf-8')}")
 
     returncode = p.wait()
-    _logger.info(f"curl return code: {returncode}")
+    logger.info(f"curl return code: {returncode}")
 
     t_stat_stop.put(None)
 

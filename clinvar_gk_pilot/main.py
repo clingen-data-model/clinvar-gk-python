@@ -1,14 +1,11 @@
 import argparse
 import json
-import logging
 import sys
 from typing import List
 
 import requests
 
-with open("log_conf.json", "r") as f:
-    conf = json.load(f)
-    logging.config.dictConfig(conf)
+from clinvar_gk_pilot.logger import logger
 
 
 def parse_args(args: List[str]) -> dict:
@@ -63,4 +60,4 @@ def process_line(record: dict, opts: dict) -> dict:
 
 
 def main(argv=sys.argv):
-    pass
+    logger.info("Starting main")
