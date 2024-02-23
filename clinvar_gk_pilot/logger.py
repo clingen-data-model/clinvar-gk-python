@@ -1,5 +1,5 @@
 import json
-import logging
+import logging.config
 
 with open("log_conf.json", "r") as f:
     conf = json.load(f)
