@@ -11,7 +11,7 @@ dependencies = [
     "google-cloud-storage~=2.14.0",
 
     # Include the tag 2.0.0-a4 from git repo https://github.com/ga4gh/vrs-python
-    "ga4gh.vrs@git+https://github.com/ga4gh/vrs-python#egg=2.0.0-a4[extras]",
+    "ga4gh.vrs[extras] @ git+https://github.com/ga4gh/vrs-python@2.0.0-a4",
 ]
 dynamic = ["version"]
 
@@ -25,8 +25,8 @@ dev = [
     "pylint~=3.0.2",
 ]
 
-# [project.scripts]
-# clinvar-ingest = "clinvar_ingest.main:main"
+[project.scripts]
+clinvar-gk-pilot = "clinvar_gk_pilot.main:main"
 
 [tool.setuptools.packages.find]
 include = ["clinvar_gk_pilot*"]
