@@ -96,9 +96,20 @@ def canonical_spdi(clinvar_json: dict) -> dict:
         return {"errors": str(e)}
 
 
+def get_hgvs(clinvar_json: dict) -> str:
+    """
+    Returns the hgvs expression from one of two places in the clinvar json
+    """
+    return (
+        clinvar_json["hgvs"]["nucleotide"]
+        if "hgvs" in clinvar_json
+        else clinvar_json["loc"]["derived_hgvs"]
+    )
+
+
 def hgvs(clinvar_json: dict) -> dict:
     try:
-        hgvs = clinvar_json["hgvs"]["nucleotide"]
+        hgvs = get_hgvs(clinvar_json)
         vrs = allele_translator.translate_from(var=hgvs, fmt="hgvs")
         return vrs.model_dump(exclude_none=True)
     except Exception as e:
@@ -108,7 +119,7 @@ def hgvs(clinvar_json: dict) -> dict:
 
 def copy_number_change(clinvar_json: dict) -> dict:
     try:
-        hgvs = clinvar_json["hgvs"]["nucleotide"]
+        hgvs = get_hgvs(clinvar_json)
         variation_type = clinvar_json["variation_type"]
         efo_code = (
             "efo:0030067"
@@ -127,7 +138,7 @@ def copy_number_change(clinvar_json: dict) -> dict:
 
 def copy_number_count(clinvar_json: dict) -> dict:
     try:
-        hgvs = clinvar_json["hgvs"]["nucleotide"]
+        hgvs = get_hgvs(clinvar_json)
         copies = clinvar_json["absolute_copies"]
         kwargs = {"copies": copies}
         vrs = cnv_translator.translate_from(var=hgvs, fmt="hgvs", **kwargs)
