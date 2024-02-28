@@ -9,7 +9,7 @@ license = { text = "MIT" }
 classifiers = ["Programming Language :: Python :: 3"]
 dependencies = [
     "google-cloud-storage~=2.14.0",
-    "ga4gh.vrs[extras] @ git+https://github.com/ga4gh/vrs-python@2.0.0-a4",
+    "ga4gh.vrs[extras] @ git+https://github.com/ga4gh/vrs-python@2.0.0-a5",
     "ndjson~=0.3.1"
 ]
 dynamic = ["version"]
