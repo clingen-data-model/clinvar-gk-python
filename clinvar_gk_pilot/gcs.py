@@ -100,7 +100,7 @@ def http_download_requests(
         max_value=opened_file_size,
     )
 
-    if opened_file_size != file_size:
+    if file_size and opened_file_size != file_size:
         raise RuntimeError(
             f"File size mismatch. Expected {file_size} but got {opened_file_size}."
         )

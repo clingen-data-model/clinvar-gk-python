@@ -9,9 +9,8 @@ license = { text = "MIT" }
 classifiers = ["Programming Language :: Python :: 3"]
 dependencies = [
     "google-cloud-storage~=2.14.0",
-
-    # Include the tag 2.0.0-a4 from git repo https://github.com/ga4gh/vrs-python
     "ga4gh.vrs[extras] @ git+https://github.com/ga4gh/vrs-python@2.0.0-a4",
+    "ndjson~=0.3.1"
 ]
 dynamic = ["version"]
 
