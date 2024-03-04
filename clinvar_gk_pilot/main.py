@@ -98,13 +98,9 @@ def canonical_spdi(clinvar_json: dict) -> dict:
 
 def get_hgvs(clinvar_json: dict) -> str:
     """
-    Returns the hgvs expression from one of two places in the clinvar json
+    Returns the hgvs expression from clinvar json
     """
-    return (
-        clinvar_json["hgvs"]["nucleotide"]
-        if "hgvs" in clinvar_json
-        else clinvar_json["loc"]["derived_hgvs"]
-    )
+    return clinvar_json["vrs_xform_plan"]["anyvar_variation_put_request"]["definition"]
 
 
 def hgvs(clinvar_json: dict) -> dict:
