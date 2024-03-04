@@ -1,6 +1,7 @@
 import argparse
 import gzip
 import json
+import os
 import sys
 from typing import List
 
@@ -13,9 +14,11 @@ from clinvar_gk_pilot.logger import logger
 
 # TODO - implement as separate strategy class for using vrs_python
 #        vs. another for anyvar vs. another for variation_normalizer
-#        Encapsulate trnslators and data_proxy in strategy class
-# TODO - source dataproxy string environment var
-data_proxy = create_dataproxy("seqrepo+file:///Users/toneill/dev/seqrepo-2021-01-29/")
+#        Encapsulate translators and data_proxy in strategy class
+seqrepo_dataproxy_url = os.getenv("SEQREPO_DATAPROXY_URL")
+if not seqrepo_dataproxy_url:
+    raise RuntimeError("'SEQREPO_DATAPROXY_URL' must be defined in the environment.")
+data_proxy = create_dataproxy(seqrepo_dataproxy_url)
 allele_translator = AlleleTranslator(data_proxy=data_proxy)
 cnv_translator = CnvTranslator(data_proxy=data_proxy)
 
