@@ -1,7 +1,6 @@
 import argparse
 import gzip
 import json
-import os
 import sys
 from typing import List
 
@@ -39,14 +38,14 @@ def download_and_decompress_file(filename: str) -> str:
     Downloads and decompresses into string form.
     # TODO - this likely will not work for large ClinVar release files
     """
-    if not filename.startswith("gs://"):
-        raise RuntimeError(
-            "Expecting a google cloud storage URI beginning with 'gs://'."
-        )
+    if filename.startswith("gs://"):
+        blob = parse_blob_uri(filename)
+        data = blob.download_as_bytes()
+    else:
+        with open(filename, "rb") as f:
+            data = f.read()
     if not filename.endswith(".json.gz"):
         raise RuntimeError("Expecting a compressed filename ending with '.json.gz'.")
-    blob = parse_blob_uri(filename)
-    data = blob.download_as_bytes()
     bytes_data = gzip.decompress(data)
     return str(bytes_data, "utf-8")
 
@@ -164,4 +163,5 @@ def main(argv=sys.argv):
 
 
 if __name__ == "__main__":
-    main(["--filename", "gs://clinvar-gk-pilot/2024-03-11/dev/vi.json.gz"])
+    # main(["--filename", "gs://clinvar-gk-pilot/2024-03-11/dev/vi.json.gz"])
+    main(["--filename", "vi.json.gz"])
