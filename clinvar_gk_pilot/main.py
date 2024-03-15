@@ -9,15 +9,16 @@ import ndjson
 from ga4gh.vrs.dataproxy import create_dataproxy
 from ga4gh.vrs.extras.translator import AlleleTranslator, CnvTranslator
 
+from clinvar_gk_pilot.config import get_env, seqrepo_dataproxy_key
 from clinvar_gk_pilot.gcs import parse_blob_uri
 from clinvar_gk_pilot.logger import logger
 
 # TODO - implement as separate strategy class for using vrs_python
 #        vs. another for anyvar vs. another for variation_normalizer
 #        Encapsulate translators and data_proxy in strategy class
-seqrepo_dataproxy_url = os.getenv("SEQREPO_DATAPROXY_URL")
+seqrepo_dataproxy_url = get_env()[seqrepo_dataproxy_key]
 if not seqrepo_dataproxy_url:
-    raise RuntimeError("'SEQREPO_DATAPROXY_URL' must be defined in the environment.")
+    raise RuntimeError(f"{seqrepo_dataproxy_key} must be defined in the environment.")
 data_proxy = create_dataproxy(seqrepo_dataproxy_url)
 allele_translator = AlleleTranslator(data_proxy=data_proxy)
 cnv_translator = CnvTranslator(data_proxy=data_proxy)
@@ -163,4 +164,4 @@ def main(argv=sys.argv):
 
 
 if __name__ == "__main__":
-    main(["--filename", "gs://clinvar-gk-pilot/2024-02-21/dev/vi.json.gz"])
+    main(["--filename", "gs://clinvar-gk-pilot/2024-03-11/dev/vi.json.gz"])
