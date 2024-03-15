@@ -12,6 +12,7 @@ from clinvar_gk_pilot.config import get_env, seqrepo_dataproxy_key
 from clinvar_gk_pilot.gcs import parse_blob_uri
 from clinvar_gk_pilot.logger import logger
 
+
 # TODO - implement as separate strategy class for using vrs_python
 #        vs. another for anyvar vs. another for variation_normalizer
 #        Encapsulate translators and data_proxy in strategy class

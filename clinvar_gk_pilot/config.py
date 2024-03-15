@@ -10,7 +10,5 @@ _dotenv_values = dotenv_values(pathlib.Path(__file__).parent / f".{_dotenv_env}.
 
 
 def get_env():
-    return {
-        seqrepo_dataproxy_key: os.getenv(seqrepo_dataproxy_key)
-        or _dotenv_values.get(seqrepo_dataproxy_key)
-    }
+    proxy = os.getenv(seqrepo_dataproxy_key) or _dotenv_values.get(seqrepo_dataproxy_key)
+    return {seqrepo_dataproxy_key: proxy}
