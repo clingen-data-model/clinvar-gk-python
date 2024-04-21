@@ -2,6 +2,7 @@ import queue
 import subprocess
 import threading
 import time
+import os
 from pathlib import Path, PurePath
 
 import requests
@@ -27,6 +28,47 @@ def parse_blob_uri(uri: str, client: storage.Client = None) -> storage.Blob:
     return storage.Blob(
         name="/".join(path_segments), bucket=storage.Bucket(client=client, name=bucket)
     )
+
+
+def _local_file_path_for(blob_uri: str, root_dir: str = "buckets") -> str:
+    parsed_uri = parse_blob_uri(blob_uri)
+    relpath = f"{root_dir}/{parsed_uri.bucket.name}/{parsed_uri.name}"
+    return relpath
+
+
+def already_downloaded(blob_uri: str) -> bool:
+    """
+    Returns true if a file at the expected path (using _local_file_path_for)
+    exists locally and has the same size as the remote blob.
+    """
+    expected_local_file = _local_file_path_for(blob_uri)
+    blob = parse_blob_uri(blob_uri)
+    # load the blob metadata from the server
+    blob.reload()
+    blob_bytes = blob.size
+    return (
+        Path(expected_local_file).exists()
+        and Path(expected_local_file).stat().st_size == blob_bytes
+    )
+
+
+def download_to_local_file(blob_uri: str) -> str:
+    """
+    Expects a blob_uri beginning with "gs://".
+    Downloads to a local file using _local_file_path_for to generate the local path.
+    """
+    if not blob_uri.startswith("gs://"):
+        raise RuntimeError(
+            "Expecting a google cloud storage URI beginning with 'gs://'."
+        )
+    blob = parse_blob_uri(blob_uri)
+    local_file_name = _local_file_path_for(blob_uri)
+    # Make parents
+    os.makedirs(os.path.dirname(local_file_name), exist_ok=True)
+    with open(local_file_name, "wb") as f:
+        logger.info(f"Downloading {blob_uri} to {local_file_name}")
+        blob.download_to_file(file_obj=f)
+    return local_file_name
 
 
 def copy_file_to_bucket(

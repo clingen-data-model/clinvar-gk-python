@@ -8,7 +8,7 @@ from typing import List
 from ga4gh.vrs.dataproxy import create_dataproxy
 from ga4gh.vrs.extras.translator import AlleleTranslator, CnvTranslator
 
-from clinvar_gk_pilot.gcs import parse_blob_uri
+from clinvar_gk_pilot.gcs import parse_blob_uri, download_to_local_file
 from clinvar_gk_pilot.logger import logger
 
 # TODO - implement as separate strategy class for using vrs_python
@@ -42,44 +42,46 @@ def parse_args(args: List[str]) -> dict:
     return vars(parser.parse_args(args))
 
 
-def download_to_local_file(filename: str) -> str:
-    """
-    Expects a filename beginning with "gs://" and ending with ".json.gz".
-    Downloads and decompresses into string form.
-    # TODO - this likely will not work for large ClinVar release files
-    """
-    if not filename.startswith("gs://"):
-        raise RuntimeError(
-            "Expecting a google cloud storage URI beginning with 'gs://'."
-        )
-    if not filename.endswith(".json.gz"):
-        raise RuntimeError("Expecting a compressed filename ending with '.json.gz'.")
-    blob = parse_blob_uri(filename)
-    local_file_name = filename.split("/")[-1]
-    with open(local_file_name, "wb") as f:
-        blob.download_to_file(file_obj=f)
-    return local_file_name
+# def download_to_local_file(filename: str) -> str:
+#     """
+#     Expects a filename beginning with "gs://" and ending with ".json.gz".
+#     Downloads and decompresses into string form.
+#     # TODO - this likely will not work for large ClinVar release files
+#     """
+#     if not filename.startswith("gs://"):
+#         raise RuntimeError(
+#             "Expecting a google cloud storage URI beginning with 'gs://'."
+#         )
+#     if not filename.endswith(".json.gz"):
+#         raise RuntimeError("Expecting a compressed filename ending with '.json.gz'.")
+#     blob = parse_blob_uri(filename)
+
+#     local_file_name = filename.split("/")[-1]
+#     with open(local_file_name, "wb") as f:
+#         blob.download_to_file(file_obj=f)
+#     return local_file_name
 
 
 def process_as_json(input_file_name: str, output_file_name: str) -> None:
     with (
         gzip.GzipFile(input_file_name, "rb") as input,
-        open(output_file_name, "wt", encoding="utf-8") as output,
+        gzip.GzipFile(output_file_name, "wb") as output,
     ):
         for line in input:
-            for clinvar_json in json.loads(line.decode("utf-8")):
-                if clinvar_json.get("issue") is not None:
-                    result = None
-                else:
-                    cls = clinvar_json["vrs_class"]
-                    if cls == "Allele":
-                        result = allele(clinvar_json)
-                    elif cls == "CopyNumberChange":
-                        result = copy_number_change(clinvar_json)
-                    elif cls == "CopyNumberCount":
-                        result = copy_number_count(clinvar_json)
-                content = {"in": clinvar_json, "out": result}
-                output.write(str(json.dumps(content) + "\n"))
+            clinvar_json = json.loads(line.decode("utf-8"))
+            if clinvar_json.get("issue") is not None:
+                result = None
+            else:
+                cls = clinvar_json["vrs_class"]
+                if cls == "Allele":
+                    result = allele(clinvar_json)
+                elif cls == "CopyNumberChange":
+                    result = copy_number_change(clinvar_json)
+                elif cls == "CopyNumberCount":
+                    result = copy_number_count(clinvar_json)
+            content = {"in": clinvar_json, "out": result}
+            output.write(json.dumps(content).encode("utf-8"))
+            output.write("\n".encode("utf-8"))
 
 
 def allele(clinvar_json: dict) -> dict:
@@ -122,16 +124,19 @@ def copy_number_change(clinvar_json: dict) -> dict:
         return {"errors": str(e)}
 
 
-def main(argv=sys.argv):
+def main(argv=sys.argv[1:]):
     """
     Process the --filename argument (expected as 'gs://..../filename.json.gz')
     and returns contents in file 'output-filename.ndjson'
     """
     filename = parse_args(argv)["filename"]
     local_file_name = download_to_local_file(filename)
-    outfile = str("output-" + local_file_name.replace(".json.gz", "") + ".ndjson")
+    outfile = str("output-" + local_file_name)
     process_as_json(local_file_name, outfile)
 
 
 if __name__ == "__main__":
-    main(["--filename", "gs://clinvar-gk-pilot/2024-04-07/dev/vi.json.gz"])
+    if len(sys.argv) == 1:
+        main(["--filename", "gs://clinvar-gk-pilot/2024-04-07/dev/vi.json.gz"])
+    else:
+        main(sys.argv[1:])
