@@ -1,8 +1,8 @@
+import os
 import queue
 import subprocess
 import threading
 import time
-import os
 from pathlib import Path, PurePath
 
 import requests

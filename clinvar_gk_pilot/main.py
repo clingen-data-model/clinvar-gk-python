@@ -2,13 +2,14 @@ import argparse
 import gzip
 import json
 import os
+import pathlib
 import sys
 from typing import List
 
 from ga4gh.vrs.dataproxy import create_dataproxy
 from ga4gh.vrs.extras.translator import AlleleTranslator, CnvTranslator
 
-from clinvar_gk_pilot.gcs import parse_blob_uri, download_to_local_file
+from clinvar_gk_pilot.gcs import download_to_local_file
 from clinvar_gk_pilot.logger import logger
 
 # TODO - implement as separate strategy class for using vrs_python
@@ -40,26 +41,6 @@ def parse_args(args: List[str]) -> dict:
     parser = argparse.ArgumentParser()
     parser.add_argument("--filename", required=True, help="Filename to read")
     return vars(parser.parse_args(args))
-
-
-# def download_to_local_file(filename: str) -> str:
-#     """
-#     Expects a filename beginning with "gs://" and ending with ".json.gz".
-#     Downloads and decompresses into string form.
-#     # TODO - this likely will not work for large ClinVar release files
-#     """
-#     if not filename.startswith("gs://"):
-#         raise RuntimeError(
-#             "Expecting a google cloud storage URI beginning with 'gs://'."
-#         )
-#     if not filename.endswith(".json.gz"):
-#         raise RuntimeError("Expecting a compressed filename ending with '.json.gz'.")
-#     blob = parse_blob_uri(filename)
-
-#     local_file_name = filename.split("/")[-1]
-#     with open(local_file_name, "wb") as f:
-#         blob.download_to_file(file_obj=f)
-#     return local_file_name
 
 
 def process_as_json(input_file_name: str, output_file_name: str) -> None:
@@ -131,7 +112,10 @@ def main(argv=sys.argv[1:]):
     """
     filename = parse_args(argv)["filename"]
     local_file_name = download_to_local_file(filename)
-    outfile = str("output-" + local_file_name)
+
+    outfile = str(pathlib.Path("output") / local_file_name)
+    # Make parents
+    os.makedirs(os.path.dirname(outfile), exist_ok=True)
     process_as_json(local_file_name, outfile)
 
 
