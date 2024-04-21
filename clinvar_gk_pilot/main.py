@@ -5,7 +5,6 @@ import os
 import sys
 from typing import List
 
-import ndjson
 from ga4gh.vrs.dataproxy import create_dataproxy
 from ga4gh.vrs.extras.translator import AlleleTranslator, CnvTranslator
 
@@ -63,11 +62,12 @@ def download_to_local_file(filename: str) -> str:
 
 
 def process_as_json(input_file_name: str, output_file_name: str) -> None:
-    with gzip.GzipFile(input_file_name, "rb") as input, open(
-        output_file_name, "wt", encoding="utf-8"
-    ) as output:
+    with (
+        gzip.GzipFile(input_file_name, "rb") as input,
+        open(output_file_name, "wt", encoding="utf-8") as output,
+    ):
         for line in input:
-            for clinvar_json in ndjson.loads(line.decode("utf-8")):
+            for clinvar_json in json.loads(line.decode("utf-8")):
                 if clinvar_json.get("issue") is not None:
                     result = None
                 else:
