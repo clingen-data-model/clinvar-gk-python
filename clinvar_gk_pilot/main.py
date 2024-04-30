@@ -13,6 +13,7 @@ from typing import List
 from ga4gh.vrs.dataproxy import create_dataproxy
 from ga4gh.vrs.extras.translator import AlleleTranslator, CnvTranslator
 
+from clinvar_gk_pilot.cli import parse_args
 from clinvar_gk_pilot.gcs import (
     _local_file_path_for,
     already_downloaded,
@@ -40,25 +41,6 @@ cnv_translators = {
     "37": CnvTranslator(data_proxy=data_proxy, default_assembly_name="GRCh37"),
     "38": CnvTranslator(data_proxy=data_proxy),
 }
-
-
-def parse_args(args: List[str]) -> dict:
-    """
-    Parse arguments and return as dict.
-    """
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--filename", required=True, help="Filename to read")
-    parser.add_argument(
-        "--parallelism",
-        type=int,
-        default=1,
-        help=(
-            "Number of worker threads. "
-            "Default 1, which still uses a separate process to run tasks. "
-            "Set to 0 to run in main thread."
-        ),
-    )
-    return vars(parser.parse_args(args))
 
 
 def process_line(line: str) -> str:
