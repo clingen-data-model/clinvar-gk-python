@@ -1,13 +1,14 @@
 import argparse
 import contextlib
 import gzip
-import itertools
 import json
 import multiprocessing
 import os
 import pathlib
+import queue
 import sys
-from typing import Any, Callable, Iterable, List
+from functools import partial
+from typing import List
 
 from ga4gh.vrs.dataproxy import create_dataproxy
 from ga4gh.vrs.extras.translator import AlleleTranslator, CnvTranslator
@@ -48,7 +49,14 @@ def parse_args(args: List[str]) -> dict:
     parser = argparse.ArgumentParser()
     parser.add_argument("--filename", required=True, help="Filename to read")
     parser.add_argument(
-        "--parallelism", type=int, default=1, help="Number of worker threads"
+        "--parallelism",
+        type=int,
+        default=1,
+        help=(
+            "Number of worker threads. "
+            "Default 1, which still uses a separate process to run tasks. "
+            "Set to 0 to run in main thread."
+        ),
     )
     return vars(parser.parse_args(args))
 
@@ -71,38 +79,17 @@ def process_line(line: str) -> str:
     return json.dumps(content)
 
 
-def _task_with_return_queue(
-    task: Callable, args: Iterable[Any], return_queue: multiprocessing.Queue
+def _task_worker(
+    task_queue: multiprocessing.Queue, return_queue: multiprocessing.Queue
 ):
     """
-    Executes task and returns the result via a queue.
+    Worker function that processes tasks from a queue.
     """
-    return_queue.put(task(*args))
-
-
-def start_task_with_timeout(
-    task: Callable,
-    args: Iterable[Any],
-    return_queue: multiprocessing.Queue,
-    timeout_s=60,
-) -> str:
-    """
-    Runs task in a separate process and waits for it to complete or times out.
-    """
-    # return_queue = multiprocessing.Queue()
-    process = multiprocessing.Process(
-        target=_task_with_return_queue, args=(task, args, return_queue)
-    )
-    process.start()
-    process.join(timeout_s)
-    if process.is_alive():
-        print("Task did not complete in time, terminating it.")
-        process.terminate()  # Forcefully terminate the process
-        process.join()  # Wait for process resources to be released
-        return json.dumps({"errors": f"Task did not complete in {timeout_s} seconds."})
-
-    # Get the return value
-    return return_queue.get()
+    while True:
+        task = task_queue.get()
+        if task is None:
+            break
+        return_queue.put(task())
 
 
 def worker(file_name_gz: str, output_file_name: str) -> None:
@@ -114,23 +101,61 @@ def worker(file_name_gz: str, output_file_name: str) -> None:
         gzip.open(file_name_gz, "rt", encoding="utf-8") as input_file,
         gzip.open(output_file_name, "wt", encoding="utf-8") as output_file,
     ):
+        task_queue = multiprocessing.Queue()
         return_queue = multiprocessing.Queue()
-        for line in input_file:
-            out_line = start_task_with_timeout(
-                process_line, (line,), return_queue, timeout_s=60
+        task_timeout = 10
+
+        def make_background_process():
+            p = multiprocessing.Process(
+                target=_task_worker,
+                args=(task_queue, return_queue),
             )
-            # output_file.write(process_line(line))
-            output_file.write(out_line)
+            return p
+
+        background_process = make_background_process()
+        background_process.start()
+
+        for line in input_file:
+            task_queue.put(partial(process_line, line))
+            try:
+                ret = return_queue.get(timeout=task_timeout)
+            except queue.Empty:
+                print("Task did not complete in time, terminating it.")
+                background_process.terminate()
+                background_process.join()
+                ret = json.dumps(
+                    {
+                        "errors": f"Task did not complete in {task_timeout} seconds.",
+                        "line": line,
+                    }
+                )
+                print("Restarting background process")
+                background_process = make_background_process()
+                background_process.start()
+            output_file.write(ret)
             output_file.write("\n")
+
+        task_queue.put(None)
+        background_process.join()
 
 
 def process_as_json_single_thread(input_file_name: str, output_file_name: str) -> None:
-    worker(input_file_name, output_file_name)
+    with gzip.open(input_file_name, "rt", encoding="utf-8") as f_in:
+        with gzip.open(output_file_name, "wt", encoding="utf-8") as f_out:
+            for line in f_in:
+                f_out.write(process_line(line))
+                f_out.write("\n")
     print(f"Output written to {output_file_name}")
 
 
-def process_as_json(input_file_name: str, output_file_name: str) -> None:
-    part_input_file_names = partition_file_lines_gz(input_file_name, 8)
+def process_as_json(
+    input_file_name: str, output_file_name: str, parallelism: int
+) -> None:
+    """
+    Process `input_file_name` in parallel and write the results to `output_file_name`.
+    """
+    assert parallelism > 0, "Parallelism must be greater than 0"
+    part_input_file_names = partition_file_lines_gz(input_file_name, parallelism)
 
     part_output_file_names = [f"{ofn}.out" for ofn in part_input_file_names]
 
@@ -152,7 +177,8 @@ def process_as_json(input_file_name: str, output_file_name: str) -> None:
             with gzip.open(part_ofn, "rt", encoding="utf-8") as f_in:
                 for line in f_in:
                     f_out.write(line)
-                    f_out.write("\n")
+                    if not line.endswith("\n"):
+                        f_out.write("\n")
                     line_counter += 1
             print(f"Lines written: {line_counter}")
 
@@ -241,27 +267,31 @@ def main(argv=sys.argv[1:]):
     outfile = str(pathlib.Path("output") / local_file_name)
     # Make parents
     os.makedirs(os.path.dirname(outfile), exist_ok=True)
-    process_as_json(local_file_name, outfile)
+
+    if opts["parallelism"] == 0:
+        process_as_json_single_thread(local_file_name, outfile)
+    else:
+        process_as_json(local_file_name, outfile, opts["parallelism"])
 
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
-        # main(
-        #     [
-        #         "--filename",
-        #         "gs://clinvar-gk-pilot/2024-04-07/dev/vi.json.gz",
-        #         "--parallelism",
-        #         "8",
-        #     ]
-        # )
-
         main(
             [
                 "--filename",
-                "vi-100000.json.gz",
+                "gs://clinvar-gk-pilot/2024-04-07/dev/vi.json.gz",
                 "--parallelism",
-                "8",
+                "10",
             ]
         )
+
+        # main(
+        #     [
+        #         "--filename",
+        #         "vi-100000.json.gz",
+        #         "--parallelism",
+        #         "1",
+        #     ]
+        # )
     else:
         main(sys.argv[1:])
