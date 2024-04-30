@@ -7,8 +7,7 @@ import multiprocessing
 import os
 import pathlib
 import sys
-
-from typing import List
+from typing import Any, Callable, Iterable, List
 
 from ga4gh.vrs.dataproxy import create_dataproxy
 from ga4gh.vrs.extras.translator import AlleleTranslator, CnvTranslator
@@ -19,7 +18,6 @@ from clinvar_gk_pilot.gcs import (
     download_to_local_file,
 )
 from clinvar_gk_pilot.logger import logger
-
 
 # TODO - implement as separate strategy class for using vrs_python
 #        vs. another for anyvar vs. another for variation_normalizer
@@ -73,13 +71,38 @@ def process_line(line: str) -> str:
     return json.dumps(content)
 
 
-def partition_into_blocks(iterable, block_size=5):
-    iterator = iter(iterable)
-    while True:
-        block = list(itertools.islice(iterator, block_size))
-        if not block:
-            break
-        yield block
+def _task_with_return_queue(
+    task: Callable, args: Iterable[Any], return_queue: multiprocessing.Queue
+):
+    """
+    Executes task and returns the result via a queue.
+    """
+    return_queue.put(task(*args))
+
+
+def start_task_with_timeout(
+    task: Callable,
+    args: Iterable[Any],
+    return_queue: multiprocessing.Queue,
+    timeout_s=60,
+) -> str:
+    """
+    Runs task in a separate process and waits for it to complete or times out.
+    """
+    # return_queue = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_task_with_return_queue, args=(task, args, return_queue)
+    )
+    process.start()
+    process.join(timeout_s)
+    if process.is_alive():
+        print("Task did not complete in time, terminating it.")
+        process.terminate()  # Forcefully terminate the process
+        process.join()  # Wait for process resources to be released
+        return json.dumps({"errors": f"Task did not complete in {timeout_s} seconds."})
+
+    # Get the return value
+    return return_queue.get()
 
 
 def worker(file_name_gz: str, output_file_name: str) -> None:
@@ -91,8 +114,13 @@ def worker(file_name_gz: str, output_file_name: str) -> None:
         gzip.open(file_name_gz, "rt", encoding="utf-8") as input_file,
         gzip.open(output_file_name, "wt", encoding="utf-8") as output_file,
     ):
+        return_queue = multiprocessing.Queue()
         for line in input_file:
-            output_file.write(process_line(line))
+            out_line = start_task_with_timeout(
+                process_line, (line,), return_queue, timeout_s=60
+            )
+            # output_file.write(process_line(line))
+            output_file.write(out_line)
             output_file.write("\n")
 
 
@@ -202,11 +230,13 @@ def main(argv=sys.argv[1:]):
     """
     opts = parse_args(argv)
     filename = opts["filename"]
-    assert filename.startswith("gs://")
-    if not already_downloaded(filename):
-        local_file_name = download_to_local_file(filename)
+    if filename.startswith("gs://"):
+        if not already_downloaded(filename):
+            local_file_name = download_to_local_file(filename)
+        else:
+            local_file_name = _local_file_path_for(filename)
     else:
-        local_file_name = _local_file_path_for(filename)
+        local_file_name = filename
 
     outfile = str(pathlib.Path("output") / local_file_name)
     # Make parents
@@ -216,6 +246,22 @@ def main(argv=sys.argv[1:]):
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
-        main(["--filename", "gs://clinvar-gk-pilot/2024-04-07/dev/vi.json.gz"])
+        # main(
+        #     [
+        #         "--filename",
+        #         "gs://clinvar-gk-pilot/2024-04-07/dev/vi.json.gz",
+        #         "--parallelism",
+        #         "8",
+        #     ]
+        # )
+
+        main(
+            [
+                "--filename",
+                "vi-100000.json.gz",
+                "--parallelism",
+                "8",
+            ]
+        )
     else:
         main(sys.argv[1:])
