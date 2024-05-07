@@ -10,8 +10,7 @@ classifiers = ["Programming Language :: Python :: 3"]
 dependencies = [
     "google-cloud-storage~=2.13.0",
     #"ga4gh.vrs[extras] @ git+https://github.com/ga4gh/vrs-python@2.0.0-a6",
-    "ga4gh.vrs[extras] @ git+https://github.com/ga4gh/vrs-python@main-draft",
-    "ndjson~=0.3.1"
+    "ga4gh.vrs[extras] @ git+https://github.com/ga4gh/vrs-python@main-draft"
 ]
 dynamic = ["version"]
 
