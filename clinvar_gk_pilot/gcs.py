@@ -98,7 +98,7 @@ def blob_writer(
 
 
 def blob_reader(
-    blob_uri: str, client: storage.Client = None, binary=True
+    blob_uri: str, client: storage.Client | None = None, binary=True
 ) -> storage.Blob:
     """
     Returns a file-like object that can be used to read from the blob at `blob_uri`
@@ -109,7 +109,7 @@ def blob_reader(
     return blob.open("rb" if binary else "r")
 
 
-def blob_size(blob_uri: str, client: storage.Client = None) -> int:
+def blob_size(blob_uri: str, client: storage.Client | None = None) -> int:
     """
     Returns the size of the blob in bytes if it exists. Raises an error if it does not.
     """
@@ -117,7 +117,22 @@ def blob_size(blob_uri: str, client: storage.Client = None) -> int:
         client = _get_gcs_client()
     blob = parse_blob_uri(blob_uri, client=client)
     blob.reload()  # Refreshes local Blob object properties from the remote object
+    assert blob.exists()
+    assert blob.size is not None
     return blob.size
+
+
+def list_blobs(bucket_name: str, prefix: str, client: storage.Client | None = None):
+    if client is None:
+        client = _get_gcs_client()
+
+    bucket = client.get_bucket(bucket_name)
+    blobs = bucket.list_blobs(prefix=prefix)
+
+    # Generate the list of blob URIs
+    blob_uris = [f"gs://{bucket_name}/{blob.name}" for blob in blobs]
+
+    return blob_uris
 
 
 def http_download_requests(
