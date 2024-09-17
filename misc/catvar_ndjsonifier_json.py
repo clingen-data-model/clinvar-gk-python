@@ -37,15 +37,6 @@ for expected_local_path, blob_uri in zip(expected_local_paths, blob_uris):
         local_paths.append(download_to_local_file(blob_uri))
     else:
         local_paths.append(expected_local_path)
-# for blob in blob_uris:
-#     if not already_downloaded(blob):
-#         print(f"Downloading {blob}...")
-#         local_paths.append(download_to_local_file(blob))
-#     else:
-#         print(f"Already downloaded {blob}")
-#         local_paths.append(_local_file_path_for(blob))
-
-# sys.exit(0)
 
 output_lines_count = 0
 last_logged_output_count_time = time.time()
@@ -57,24 +48,17 @@ with gzip.open(output_file_name, "wt", compresslevel=9) as f_out:
         print(f"Reading {file_path} ({file_idx + 1}/{len(local_paths)})...")
         try:
             with gzip.open(file_path, "rt") as f_in:
-                reader = csv.reader(f_in)
-                for i, row in enumerate(reader):
-                    assert (
-                        len(row) == 1
-                    ), f"row {i} of file {file_path} had more than 1 column! ({len(row)} columns) {row}"
-                    obj = json.loads(row[0])
-                    assert (
-                        len(obj) == 1
-                    ), f"row {i} of file {file_path} had more than 1 key! ({len(obj)} keys) {obj}"
-
-                    # Write key and value
-                    key, value = list(obj.items())[0]
-                    assert isinstance(
-                        key, str
-                    ), f"key {key} on line {i} of file {file_path} is not a string!"
+                for line in f_in:
+                    rec = json.loads(line)
+                    rec = rec["rec"]
+                    ks = list(rec.keys())
+                    if len(ks) != 1:
+                        raise ValueError("Record did not contain exactly 1 key: " + line)
+                    value = rec[ks[0]]
 
                     f_out.write(json.dumps(value))
                     f_out.write("\n")
+
                     output_lines_count += 1
                     now = time.time()
                     if now - last_logged_output_count_time > 5:
