@@ -1,20 +1,35 @@
-import enum
-import os
-import pathlib
-import gzip
 import csv
+import gzip
 import json
+import os
 import sys
 import time
 
-import clinvar_gk_pilot
 from clinvar_gk_pilot.gcs import (
-    list_blobs,
-    already_downloaded,
-    download_to_local_file,
     _local_file_path_for,
+    download_to_local_file,
+    list_blobs,
 )
 
+# json (standard library)
+# python3.12 misc/catvar_ndjsonifier_json.py  677.53s user 2.35s system 99% cpu 11:25.62 total
+# orjson
+# python3.12 misc/catvar_ndjsonifier_json.py  429.97s user 2.33s system 98% cpu 7:17.41 total
+
+
+def to_json(x):
+    return json.dumps(x).encode("utf-8")
+
+
+def from_json(x: bytes):
+    return json.loads(x.decode("utf-8"))
+
+
+# import orjson
+# def to_json(x):
+#     return orjson.dumps(x)
+# def from_json(x: bytes):
+#     return orjson.loads(x)
 
 # increase csv field size limit
 csv.field_size_limit(sys.maxsize)
@@ -26,8 +41,8 @@ output_file_name = "combined-scv_output.ndjson.gz"
 
 blob_uris = list_blobs(bucket_name, folder_path)
 blob_uris = [blob for blob in blob_uris if not blob.endswith("/")]
-for blob in blob_uris:
-    print(blob)
+# for blob in blob_uris:
+#     print(blob)
 local_paths = []
 # Download all files
 print("Downloading files...")
@@ -43,21 +58,23 @@ last_logged_output_count_time = time.time()
 last_logged_output_count_value = 0
 
 
-with gzip.open(output_file_name, "wt", compresslevel=9) as f_out:
+with gzip.open(output_file_name, "wb", compresslevel=9) as f_out:
     for file_idx, file_path in enumerate(local_paths):
         print(f"Reading {file_path} ({file_idx + 1}/{len(local_paths)})...")
         try:
-            with gzip.open(file_path, "rt") as f_in:
+            with gzip.open(file_path, "rb") as f_in:
                 for line in f_in:
-                    rec = json.loads(line)
+                    rec = from_json(line)
                     rec = rec["rec"]
                     ks = list(rec.keys())
                     if len(ks) != 1:
-                        raise ValueError("Record did not contain exactly 1 key: " + line)
+                        raise ValueError(
+                            "Record did not contain exactly 1 key: " + line
+                        )
                     value = rec[ks[0]]
 
-                    f_out.write(json.dumps(value))
-                    f_out.write("\n")
+                    f_out.write(to_json(value))
+                    f_out.write(b"\n")
 
                     output_lines_count += 1
                     now = time.time()
