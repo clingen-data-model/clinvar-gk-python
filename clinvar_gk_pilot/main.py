@@ -106,8 +106,10 @@ def worker(file_name_gz: str, output_file_name: str) -> None:
                 background_process.join()
                 ret = json.dumps(
                     {
-                        "errors": f"Task did not complete in {task_timeout} seconds.",
-                        "line": line,
+                        "in": json.loads(line),
+                        "out": {
+                            "errors": f"Task did not complete in {task_timeout} seconds.",
+                        },
                     }
                 )
                 print("Restarting background process")
@@ -260,7 +262,7 @@ if __name__ == "__main__":
         main(
             [
                 "--filename",
-                "gs://clinvar-gk-pilot/2024-04-07/dev/vi.json.gz",
+                "gs://clinvar-gk-pilot/2025-03-23/dev/vi.json.gz",
                 "--parallelism",
                 "10",
             ]
