@@ -53,3 +53,9 @@ export UTA_DB_URL=postgresql://anonymous@localhost:5433/uta/uta_20241220
 export SEQREPO_DATAPROXY_URL='seqrepo+file:///Users/kferrite/dev/data/seqrepo/2024-12-20'
 python clinvar_gk_pilot/main.py --filename gs://clinvar-gks/2025-07-06/dev/vi.json.gz --parallelism 4 2>&1 | tee 2025-07-06.log
 ```
+
+Parallelism is configurable and uses python multiprocessing and multiprocessing queues. Some parallelism is significantly beneficial but since there is interprocess communication overhead and they are hitting the same database there can be diminishing returns. On a Macbook Pro with 16 cores, setting parallelism to 4-6 provides clear benefit, but exceeding 10 saturates the machine and may be counterproductive. The code will partition the input file into `<parallelism>` number of files and each worker will process one, and then the outputs will be combined.
+
+If parallelism is enabled, each worker also monitors its child process and terminates excessively long tasks.
+
+The output is written to the same path as the local input file, but under an `output` directory in the current working directory. e.g. for the input filename `gs://clinvar-gks/2025-07-06/dev/vi.json.gz`, the file will be auto-cached to `buckets/clinvar-gks/2025-07-06/dev/vi.json.gz` and the output will be written to `output/buckets/clinvar-gks/2025-07-06/dev/vi.json.gz`
