@@ -185,17 +185,31 @@ def process_as_json(
     print(f"Partitioned filenames: {part_output_file_names}")
 
     workers = []
+    worker_info = []
     # Start a worker per file name
-    for part_ifn, part_ofn in zip(part_input_file_names, part_output_file_names):
+    for i, (part_ifn, part_ofn) in enumerate(
+        zip(part_input_file_names, part_output_file_names)
+    ):
         w = multiprocessing.Process(target=worker, args=(part_ifn, part_ofn))
         w.start()
         workers.append(w)
+        worker_info.append((i, w, part_ifn))
 
-    print(f"Started {len(workers)} workers")
+    print(f"Started {len(workers)} workers", flush=True)
 
     # Wait for all workers to finish
-    for w in workers:
-        w.join()
+    remaining_workers = worker_info.copy()
+    while remaining_workers:
+        for worker_idx, w, part_ifn in remaining_workers.copy():
+            w.join(timeout=5)
+            if not w.is_alive():
+                remaining_workers.remove((worker_idx, w, part_ifn))
+
+        if remaining_workers:
+            still_running = [
+                f"Worker {idx} ({part_ifn})" for idx, w, part_ifn in remaining_workers
+            ]
+            print(f"Still running: {', '.join(still_running)}", flush=True)
 
     with gzip.open(output_file_name, "wt", encoding="utf-8") as f_out:
         for part_ofn in part_output_file_names:
@@ -262,7 +276,10 @@ def copy_number_change(clinvar_json: dict) -> dict:
             )
         )
         if result.copy_number_change:
-            return result.copy_number_change.model_dump(exclude_none=True)
+            vrs_variant = result.copy_number_change
+            if vrs_variant.location.sequence:
+                vrs_variant.location.sequence = None
+            return vrs_variant.model_dump(exclude_none=True)
         else:
             return {"errors": result.warnings}
 
@@ -298,7 +315,10 @@ def copy_number_count(clinvar_json: dict) -> dict:
             )
         )
         if result.copy_number_count:
-            return result.copy_number_count.model_dump(exclude_none=True)
+            vrs_variant = result.copy_number_count
+            if vrs_variant.location.sequence:
+                vrs_variant.location.sequence = None
+            return vrs_variant.model_dump(exclude_none=True)
         else:
             return {"errors": result.warnings}
 
