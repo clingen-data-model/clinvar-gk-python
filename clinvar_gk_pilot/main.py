@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import gzip
 import json
@@ -6,11 +7,14 @@ import os
 import pathlib
 import queue
 import sys
+from dataclasses import dataclass
 from functools import partial
 from typing import List
 
+import requests
 from ga4gh.vrs.dataproxy import create_dataproxy
 from ga4gh.vrs.extras.translator import AlleleTranslator, CnvTranslator
+from ga4gh.vrs.models import CopyChange
 
 from clinvar_gk_pilot.cli import parse_args
 from clinvar_gk_pilot.gcs import (
@@ -178,7 +182,7 @@ def allele(clinvar_json: dict) -> dict:
         return {"errors": str(e)}
 
 
-def copy_number_count(clinvar_json: dict) -> dict:
+def copy_number_count_vrspython(clinvar_json: dict) -> dict:
     try:
         tlr = cnv_translators[clinvar_json.get("assembly_version", "38")]
         kwargs = {"copies": clinvar_json["absolute_copies"]}
@@ -194,6 +198,82 @@ def copy_number_count(clinvar_json: dict) -> dict:
 
 
 def copy_number_change(clinvar_json: dict) -> dict:
+    """
+    Create a VRS CopyNumberChange variation using the variation-normalization module.
+
+    Returns:
+        Dictionary containing VRS representation or error information
+    """
+    try:
+        # Extract required parameters from clinvar_json
+        hgvs_expr = clinvar_json["source"]
+        # absolute_copies = clinvar_json["absolute_copies"]
+
+        # Get baseline_copies by offsetting by one from absolute_copies
+        if clinvar_json["variation_type"] in ["Deletion", "copy number loss"]:
+            # baseline_copies = absolute_copies + 1
+            copy_change = CopyChange.LOSS
+        elif clinvar_json["variation_type"] in ["Duplication", "copy number gain"]:
+            # baseline_copies = absolute_copies - 1
+            copy_change = CopyChange.GAIN
+        else:
+            return {"errors": f"Unknown variation_type: {clinvar_json}"}
+
+        vrs_variant = asyncio.run(
+            query_handler.to_copy_number_handler.hgvs_to_copy_number_change(
+                hgvs_expr=hgvs_expr, copy_change=copy_change
+            )
+        ).copy_number_change
+        return vrs_variant.model_dump(exclude_none=True)
+
+    except Exception as e:
+        error_msg = f"Unexpected error: {e}"
+        logger.error(f"Exception in copy_number_count: {clinvar_json}: {error_msg}")
+        return {"errors": error_msg}
+
+
+def copy_number_count(clinvar_json: dict) -> dict:
+    """
+    Create a VRS Copy Number Count variation using the variation-normalization service.
+
+    Args:
+        clinvar_json: Dictionary containing ClinVar data with keys:
+            - source: HGVS expression or other variation string
+            - absolute_copies: The absolute number of copies
+            - assembly_version: Optional assembly version (defaults to 38)
+
+    Returns:
+        Dictionary containing VRS representation or error information
+    """
+    try:
+        # Extract required parameters from clinvar_json
+        hgvs_expr = clinvar_json["source"]
+        absolute_copies = clinvar_json["absolute_copies"]
+
+        # Get baseline_copies by offsetting by one from absolute_copies
+        if clinvar_json["variation_type"] in ["Deletion", "copy number loss"]:
+            baseline_copies = absolute_copies + 1
+            # copy_change = CopyChange.LOSS
+        elif clinvar_json["variation_type"] in ["Duplication", "copy number gain"]:
+            baseline_copies = absolute_copies - 1
+            # copy_change = CopyChange.GAIN
+        else:
+            return {"errors": f"Unknown variation_type: {clinvar_json}"}
+
+        vrs_variant = asyncio.run(
+            query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
+                hgvs_expr=hgvs_expr, baseline_copies=baseline_copies
+            )
+        ).copy_number_change
+        return vrs_variant
+
+    except Exception as e:
+        error_msg = f"Unexpected error: {e}"
+        logger.error(f"Exception in copy_number_count: {clinvar_json}: {error_msg}")
+        return {"errors": error_msg}
+
+
+def copy_number_change_vrspython(clinvar_json: dict) -> dict:
     try:
         tlr = cnv_translators[clinvar_json.get("assembly_version", "38")]
         kwargs = {"copy_change": clinvar_json["copy_change_type"]}
@@ -215,7 +295,7 @@ def partition_file_lines_gz(local_file_path_gz: str, partitions: int) -> List[st
     Return a list of `partitions` file names that are a roughly equal
     number of lines from `local_file_path_gz`.
     """
-    filenames = [f"{local_file_path_gz}.part_{i+1}" for i in range(partitions)]
+    filenames = [f"{local_file_path_gz}.part_{i + 1}" for i in range(partitions)]
 
     # Read the file and write each line to a file, looping through the output files
     with gzip.open(local_file_path_gz, "rt") as f:
@@ -251,6 +331,8 @@ def main(argv=sys.argv[1:]):
     # Make parents
     os.makedirs(os.path.dirname(outfile), exist_ok=True)
 
+    # run_opts = Options(vrs_type_filter=opts.vrs_type_filter)
+
     if opts["parallelism"] == 0:
         process_as_json_single_thread(local_file_name, outfile)
     else:
@@ -258,13 +340,45 @@ def main(argv=sys.argv[1:]):
 
 
 if __name__ == "__main__":
+    creds_contents = """[default]
+    aws_access_key_id = asdf
+    aws_secret_access_key = asdf"""
+    aws_fake_creds_filename = "aws_fake_creds"
+    with open(aws_fake_creds_filename, "w") as f:
+        f.write(creds_contents)
+    os.environ["AWS_SHARED_CREDENTIALS_FILE"] = str(
+        pathlib.Path.cwd() / aws_fake_creds_filename
+    )
+    if "GENE_NORM_DB_URL" not in os.environ:
+        raise RuntimeError("Must set GENE_NORM_DB_URL (e.g. http://localhost:8001)")
+    if "SEQREPO_ROOT_DIR" not in os.environ:
+        raise RuntimeError(
+            "Must set SEQREPO_ROOT_DIR (e.g. /Users/kferrite/dev/data/seqrepo/2024-12-20)"
+        )
+    if "UTA_DB_URL" not in os.environ:
+        raise RuntimeError(
+            "Must set UTA_DB_URL (e.g. postgresql://anonymous@localhost:5433/uta/uta_20241220)"
+        )
+
+    # Import and initialize variation-normalizer QueryHandler
+    # Requires env vars to be set and dynamodb jar to be run locally and pointed to with GENE_NORM_DB_URL
+    # https://github.com/clingen-data-model/architecture/tree/master/helm/charts/clingen-vicc/docker/dynamodb
+    # In the `dynamodb` directory above, build:
+    # podman build -t gene-normalizer-dynamodb:latest .
+    # Then run it (uses host gcloud config to authenticate to our bucket which has a snapshot of the gene database)
+    # podman run -it -p 8001:8000 -v $HOME/.config/gcloud:/config/gcloud -v dynamodb:/data -e DATA_DIR=/data -e GOOGLE_APPLICATION_CREDENTIALS=/config/gcloud/application_default_credentials.json -e CLOUDSDK_CONFIG=/config/gcloud gene-normalizer-dynamodb:latest
+    import variation
+    from variation.query import QueryHandler
+
+    query_handler = QueryHandler()
+
     if len(sys.argv) == 1:
         main(
             [
                 "--filename",
                 "gs://clinvar-gk-pilot/2025-03-23/dev/vi.json.gz",
                 "--parallelism",
-                "10",
+                "2",
             ]
         )
 
