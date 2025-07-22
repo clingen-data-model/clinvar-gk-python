@@ -7,7 +7,6 @@ import os
 import pathlib
 import queue
 import sys
-import threading
 from dataclasses import dataclass
 from functools import partial
 from typing import List
@@ -233,6 +232,30 @@ def copy_number_change(clinvar_json: dict) -> dict:
         return {"errors": error_msg}
 
 
+def _call_hgvs_to_copy_number_count_worker(result_queue, hgvs_expr, baseline_copies):
+    """Worker function for multiprocessing call to hgvs_to_copy_number_count"""
+    try:
+        # Import here to avoid issues with multiprocessing and module-level imports
+        import asyncio
+
+        from variation.query import QueryHandler
+
+        # Create a new QueryHandler instance in the worker process
+        query_handler = QueryHandler()
+
+        result = asyncio.run(
+            query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
+                hgvs_expr=hgvs_expr, baseline_copies=baseline_copies
+            )
+        )
+        if result.copy_number_count:
+            result_queue.put(result.copy_number_count.model_dump(exclude_none=True))
+        else:
+            result_queue.put({"errors": result.warnings})
+    except Exception as e:
+        result_queue.put({"errors": str(e)})
+
+
 def copy_number_count(clinvar_json: dict) -> dict:
     """
     Create a VRS Copy Number Count variation using the variation-normalization service.
@@ -254,38 +277,39 @@ def copy_number_count(clinvar_json: dict) -> dict:
         else:
             return {"errors": f"Unknown variation_type: {clinvar_json}"}
 
-        result_container = [None]
-        exception_container = [None]
+        # Create a queue for communication between processes
+        result_queue = multiprocessing.Queue()
 
-        def call_hgvs_to_copy_number_count():
-            try:
-                result = asyncio.run(
-                    query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
-                        hgvs_expr=hgvs_expr, baseline_copies=baseline_copies
-                    )
-                )
-                if result.copy_number_count:
-                    result_container[0] = result.copy_number_count.model_dump(
-                        exclude_none=True
-                    )
-                else:
-                    result_container[0] = {"errors": result.warnings}
-            except Exception as e:
-                exception_container[0] = e
+        # Create and start the worker process
+        process = multiprocessing.Process(
+            target=_call_hgvs_to_copy_number_count_worker,
+            args=(result_queue, hgvs_expr, baseline_copies),
+        )
+        process.start()
 
-        thread = threading.Thread(target=call_hgvs_to_copy_number_count)
-        thread.start()
-        thread.join(timeout=request_timeout)
+        # Wait for the process to complete or timeout
+        process.join(timeout=request_timeout)
 
-        if thread.is_alive():
+        if process.is_alive():
+            # Process didn't complete in time, forcefully terminate it
+            process.terminate()
+            process.join()  # Wait for the process to actually terminate
             return {
                 "errors": f"hgvs_to_copy_number_count call timed out after {request_timeout} seconds"
             }
 
-        if exception_container[0]:
-            raise exception_container[0]
+        # Check if the process completed successfully
+        if process.exitcode != 0:
+            return {
+                "errors": f"Worker process failed with exit code {process.exitcode}"
+            }
 
-        return result_container[0]
+        # Get the result from the queue
+        try:
+            result = result_queue.get_nowait()
+            return result
+        except queue.Empty:
+            return {"errors": "No result received from worker process"}
 
     except Exception as e:
         error_msg = f"Unexpected error: {e}"
@@ -411,4 +435,6 @@ if __name__ == "__main__":
         #     ]
         # )
     else:
+        main(sys.argv[1:])
+        main(sys.argv[1:])
         main(sys.argv[1:])
