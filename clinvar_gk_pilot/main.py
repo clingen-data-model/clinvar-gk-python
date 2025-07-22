@@ -249,10 +249,8 @@ def copy_number_count(clinvar_json: dict) -> dict:
         # Get baseline_copies by offsetting by one from absolute_copies
         if clinvar_json["variation_type"] in ["Deletion", "copy number loss"]:
             baseline_copies = absolute_copies + 1
-            # copy_change = CopyChange.LOSS
         elif clinvar_json["variation_type"] in ["Duplication", "copy number gain"]:
             baseline_copies = absolute_copies - 1
-            # copy_change = CopyChange.GAIN
         else:
             return {"errors": f"Unknown variation_type: {clinvar_json}"}
 
@@ -261,11 +259,6 @@ def copy_number_count(clinvar_json: dict) -> dict:
 
         def call_hgvs_to_copy_number_count():
             try:
-                # result = asyncio.run(
-                #     query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
-                #         hgvs_expr=hgvs_expr, baseline_copies=baseline_copies
-                #     )
-                # ).copy_number_count.model_dump(exclude_none=True)
                 result = asyncio.run(
                     query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
                         hgvs_expr=hgvs_expr, baseline_copies=baseline_copies
