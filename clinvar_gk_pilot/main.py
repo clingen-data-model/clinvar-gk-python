@@ -7,6 +7,7 @@ import os
 import pathlib
 import queue
 import sys
+import threading
 from dataclasses import dataclass
 from functools import partial
 from typing import List
@@ -236,19 +237,14 @@ def copy_number_count(clinvar_json: dict) -> dict:
     """
     Create a VRS Copy Number Count variation using the variation-normalization service.
 
-    Args:
-        clinvar_json: Dictionary containing ClinVar data with keys:
-            - source: HGVS expression or other variation string
-            - absolute_copies: The absolute number of copies
-            - assembly_version: Optional assembly version (defaults to 38)
-
     Returns:
         Dictionary containing VRS representation or error information
     """
+    request_timeout = 5  # seconds
     try:
         # Extract required parameters from clinvar_json
         hgvs_expr = clinvar_json["source"]
-        absolute_copies = clinvar_json["absolute_copies"]
+        absolute_copies = int(clinvar_json["absolute_copies"])
 
         # Get baseline_copies by offsetting by one from absolute_copies
         if clinvar_json["variation_type"] in ["Deletion", "copy number loss"]:
@@ -260,12 +256,43 @@ def copy_number_count(clinvar_json: dict) -> dict:
         else:
             return {"errors": f"Unknown variation_type: {clinvar_json}"}
 
-        vrs_variant = asyncio.run(
-            query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
-                hgvs_expr=hgvs_expr, baseline_copies=baseline_copies
-            )
-        ).copy_number_change
-        return vrs_variant
+        result_container = [None]
+        exception_container = [None]
+
+        def call_hgvs_to_copy_number_count():
+            try:
+                # result = asyncio.run(
+                #     query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
+                #         hgvs_expr=hgvs_expr, baseline_copies=baseline_copies
+                #     )
+                # ).copy_number_count.model_dump(exclude_none=True)
+                result = asyncio.run(
+                    query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
+                        hgvs_expr=hgvs_expr, baseline_copies=baseline_copies
+                    )
+                )
+                if result.copy_number_count:
+                    result_container[0] = result.copy_number_count.model_dump(
+                        exclude_none=True
+                    )
+                else:
+                    result_container[0] = {"errors": result.warnings}
+            except Exception as e:
+                exception_container[0] = e
+
+        thread = threading.Thread(target=call_hgvs_to_copy_number_count)
+        thread.start()
+        thread.join(timeout=request_timeout)
+
+        if thread.is_alive():
+            return {
+                "errors": f"hgvs_to_copy_number_count call timed out after {request_timeout} seconds"
+            }
+
+        if exception_container[0]:
+            raise exception_container[0]
+
+        return result_container[0]
 
     except Exception as e:
         error_msg = f"Unexpected error: {e}"
