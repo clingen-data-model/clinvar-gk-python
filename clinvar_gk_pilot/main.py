@@ -65,11 +65,15 @@ def process_line(line: str) -> str:
 
 
 def _task_worker(
-    task_queue: multiprocessing.Queue, return_queue: multiprocessing.Queue
+    task_queue: multiprocessing.Queue, return_queue: multiprocessing.Queue, init_fn=None
 ):
     """
     Worker function that processes tasks from a queue.
     """
+    # Run any per-process initialization
+    if init_fn:
+        init_fn()
+
     while True:
         task = task_queue.get()
         if task is None:
@@ -77,11 +81,20 @@ def _task_worker(
         return_queue.put(task())
 
 
+# Define init function to set up QueryHandler in this process
+def init_query_handler():
+    from variation.query import QueryHandler
+
+    global query_handler
+    query_handler = QueryHandler()
+
+
 def worker(file_name_gz: str, output_file_name: str) -> None:
     """
     Takes an input file (a GZIP file of newline delimited), runs `process_line`
     on each line, and writes the output to a new GZIP file called `output_file_name`.
     """
+
     with (
         gzip.open(file_name_gz, "rt", encoding="utf-8") as input_file,
         gzip.open(output_file_name, "wt", encoding="utf-8") as output_file,
@@ -93,10 +106,11 @@ def worker(file_name_gz: str, output_file_name: str) -> None:
         def make_background_process():
             p = multiprocessing.Process(
                 target=_task_worker,
-                args=(task_queue, return_queue),
+                args=(task_queue, return_queue, init_query_handler),
             )
             return p
 
+        print("Making background process _task_worker")
         background_process = make_background_process()
         background_process.start()
 
@@ -145,6 +159,7 @@ def process_as_json(
     part_input_file_names = partition_file_lines_gz(input_file_name, parallelism)
 
     part_output_file_names = [f"{ofn}.out" for ofn in part_input_file_names]
+    print(f"Partitioned filenames: {part_output_file_names}")
 
     workers = []
     # Start a worker per file name
@@ -152,6 +167,8 @@ def process_as_json(
         w = multiprocessing.Process(target=worker, args=(part_ifn, part_ofn))
         w.start()
         workers.append(w)
+
+    print(f"Started {len(workers)} workers")
 
     # Wait for all workers to finish
     for w in workers:
@@ -207,63 +224,38 @@ def copy_number_change(clinvar_json: dict) -> dict:
     try:
         # Extract required parameters from clinvar_json
         hgvs_expr = clinvar_json["source"]
-        # absolute_copies = clinvar_json["absolute_copies"]
 
         # Get baseline_copies by offsetting by one from absolute_copies
         if clinvar_json["variation_type"] in ["Deletion", "copy number loss"]:
-            # baseline_copies = absolute_copies + 1
             copy_change = CopyChange.LOSS
         elif clinvar_json["variation_type"] in ["Duplication", "copy number gain"]:
-            # baseline_copies = absolute_copies - 1
             copy_change = CopyChange.GAIN
         else:
             return {"errors": f"Unknown variation_type: {clinvar_json}"}
 
-        vrs_variant = asyncio.run(
+        result = asyncio.run(
             query_handler.to_copy_number_handler.hgvs_to_copy_number_change(
                 hgvs_expr=hgvs_expr, copy_change=copy_change
             )
-        ).copy_number_change
-        return vrs_variant.model_dump(exclude_none=True)
+        )
+        if result.copy_number_change:
+            return result.copy_number_change.model_dump(exclude_none=True)
+        else:
+            return {"errors": result.warnings}
 
     except Exception as e:
         error_msg = f"Unexpected error: {e}"
-        logger.error(f"Exception in copy_number_count: {clinvar_json}: {error_msg}")
+        logger.error(f"Exception in copy_number_change: {clinvar_json}: {error_msg}")
         return {"errors": error_msg}
-
-
-def _call_hgvs_to_copy_number_count_worker(result_queue, hgvs_expr, baseline_copies):
-    """Worker function for multiprocessing call to hgvs_to_copy_number_count"""
-    try:
-        # Import here to avoid issues with multiprocessing and module-level imports
-        import asyncio
-
-        from variation.query import QueryHandler
-
-        # Create a new QueryHandler instance in the worker process
-        query_handler = QueryHandler()
-
-        result = asyncio.run(
-            query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
-                hgvs_expr=hgvs_expr, baseline_copies=baseline_copies
-            )
-        )
-        if result.copy_number_count:
-            result_queue.put(result.copy_number_count.model_dump(exclude_none=True))
-        else:
-            result_queue.put({"errors": result.warnings})
-    except Exception as e:
-        result_queue.put({"errors": str(e)})
 
 
 def copy_number_count(clinvar_json: dict) -> dict:
     """
-    Create a VRS Copy Number Count variation using the variation-normalization service.
+    Create a VRS CopyNumberCount variation using the variation-normalization service.
 
     Returns:
         Dictionary containing VRS representation or error information
     """
-    request_timeout = 5  # seconds
     try:
         # Extract required parameters from clinvar_json
         hgvs_expr = clinvar_json["source"]
@@ -277,39 +269,15 @@ def copy_number_count(clinvar_json: dict) -> dict:
         else:
             return {"errors": f"Unknown variation_type: {clinvar_json}"}
 
-        # Create a queue for communication between processes
-        result_queue = multiprocessing.Queue()
-
-        # Create and start the worker process
-        process = multiprocessing.Process(
-            target=_call_hgvs_to_copy_number_count_worker,
-            args=(result_queue, hgvs_expr, baseline_copies),
+        result = asyncio.run(
+            query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
+                hgvs_expr=hgvs_expr, baseline_copies=baseline_copies
+            )
         )
-        process.start()
-
-        # Wait for the process to complete or timeout
-        process.join(timeout=request_timeout)
-
-        if process.is_alive():
-            # Process didn't complete in time, forcefully terminate it
-            process.terminate()
-            process.join()  # Wait for the process to actually terminate
-            return {
-                "errors": f"hgvs_to_copy_number_count call timed out after {request_timeout} seconds"
-            }
-
-        # Check if the process completed successfully
-        if process.exitcode != 0:
-            return {
-                "errors": f"Worker process failed with exit code {process.exitcode}"
-            }
-
-        # Get the result from the queue
-        try:
-            result = result_queue.get_nowait()
-            return result
-        except queue.Empty:
-            return {"errors": "No result received from worker process"}
+        if result.copy_number_count:
+            return result.copy_number_count.model_dump(exclude_none=True)
+        else:
+            return {"errors": result.warnings}
 
     except Exception as e:
         error_msg = f"Unexpected error: {e}"
@@ -375,8 +343,6 @@ def main(argv=sys.argv[1:]):
     # Make parents
     os.makedirs(os.path.dirname(outfile), exist_ok=True)
 
-    # run_opts = Options(vrs_type_filter=opts.vrs_type_filter)
-
     if opts["parallelism"] == 0:
         process_as_json_single_thread(local_file_name, outfile)
     else:
@@ -384,6 +350,13 @@ def main(argv=sys.argv[1:]):
 
 
 if __name__ == "__main__":
+    # Importing and initializing the variation-normalizer QueryHandler
+    # requires env vars to be set and dynamodb jar to be run locally and pointed to with GENE_NORM_DB_URL
+    # https://github.com/clingen-data-model/architecture/tree/master/helm/charts/clingen-vicc/docker/dynamodb
+    # In the `dynamodb` directory above, build:
+    # podman build -t gene-normalizer-dynamodb:latest .
+    # Then run it (uses host gcloud config to authenticate to our bucket which has a snapshot of the gene database)
+    # podman run -it -p 8001:8000 -v $HOME/.config/gcloud:/config/gcloud -v dynamodb:/data -e DATA_DIR=/data -e GOOGLE_APPLICATION_CREDENTIALS=/config/gcloud/application_default_credentials.json -e CLOUDSDK_CONFIG=/config/gcloud gene-normalizer-dynamodb:latest
     creds_contents = """[default]
     aws_access_key_id = asdf
     aws_secret_access_key = asdf"""
@@ -404,18 +377,6 @@ if __name__ == "__main__":
             "Must set UTA_DB_URL (e.g. postgresql://anonymous@localhost:5433/uta/uta_20241220)"
         )
 
-    # Import and initialize variation-normalizer QueryHandler
-    # Requires env vars to be set and dynamodb jar to be run locally and pointed to with GENE_NORM_DB_URL
-    # https://github.com/clingen-data-model/architecture/tree/master/helm/charts/clingen-vicc/docker/dynamodb
-    # In the `dynamodb` directory above, build:
-    # podman build -t gene-normalizer-dynamodb:latest .
-    # Then run it (uses host gcloud config to authenticate to our bucket which has a snapshot of the gene database)
-    # podman run -it -p 8001:8000 -v $HOME/.config/gcloud:/config/gcloud -v dynamodb:/data -e DATA_DIR=/data -e GOOGLE_APPLICATION_CREDENTIALS=/config/gcloud/application_default_credentials.json -e CLOUDSDK_CONFIG=/config/gcloud gene-normalizer-dynamodb:latest
-    import variation
-    from variation.query import QueryHandler
-
-    query_handler = QueryHandler()
-
     if len(sys.argv) == 1:
         main(
             [
@@ -435,6 +396,4 @@ if __name__ == "__main__":
         #     ]
         # )
     else:
-        main(sys.argv[1:])
-        main(sys.argv[1:])
         main(sys.argv[1:])
