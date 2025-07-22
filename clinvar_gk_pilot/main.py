@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import gzip
 import json
+import logging
 import multiprocessing
 import os
 import pathlib
@@ -95,6 +96,21 @@ def worker(file_name_gz: str, output_file_name: str) -> None:
     on each line, and writes the output to a new GZIP file called `output_file_name`.
     """
 
+    # Set up file-specific logger
+    log_file_name = f"{file_name_gz}.log"
+    file_logger = logging.getLogger(f"worker_{os.path.basename(file_name_gz)}")
+    file_logger.setLevel(logging.INFO)
+
+    # Create file handler with the same format as log_conf.json
+    file_handler = logging.FileHandler(log_file_name)
+    formatter = logging.Formatter(
+        fmt="%(asctime)s - %(module)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    file_handler.setFormatter(formatter)
+    file_logger.addHandler(file_handler)
+    file_logger.propagate = False  # Prevent duplicate logs
+
     with (
         gzip.open(file_name_gz, "rt", encoding="utf-8") as input_file,
         gzip.open(output_file_name, "wt", encoding="utf-8") as output_file,
@@ -114,7 +130,10 @@ def worker(file_name_gz: str, output_file_name: str) -> None:
         background_process = make_background_process()
         background_process.start()
 
+        line_number = -1
         for line in input_file:
+            line_number += 1
+            file_logger.info(f"Processing line (index: {line_number}): {line}")
             task_queue.put(partial(process_line, line))
             try:
                 ret = return_queue.get(timeout=task_timeout)
@@ -138,6 +157,10 @@ def worker(file_name_gz: str, output_file_name: str) -> None:
 
         task_queue.put(None)
         background_process.join()
+
+        # Clean up logger handler
+        file_handler.close()
+        file_logger.removeHandler(file_handler)
 
 
 def process_as_json_single_thread(input_file_name: str, output_file_name: str) -> None:
