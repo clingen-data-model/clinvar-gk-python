@@ -367,6 +367,39 @@ def partition_file_lines_gz(local_file_path_gz: str, partitions: int) -> List[st
     return filenames
 
 
+def initialize_variation_normalizer_ref_data():
+    """Download and import the variation normalizer reference data script at runtime"""
+    import importlib.util
+    import tempfile
+
+    # URL to the script
+    script_url = "https://raw.githubusercontent.com/GenomicMedLab/variation-normalizer-manuscript/issue-116/analysis/download_cool_seq_tool_files.py"
+
+    # Download the script
+    response = requests.get(script_url)
+    response.raise_for_status()
+
+    # Create a temporary file and write the script content
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as temp_file:
+        temp_file.write(response.text)
+        temp_file_path = temp_file.name
+
+    try:
+        # Import the module from the temporary file
+        spec = importlib.util.spec_from_file_location(
+            "download_cool_seq_tool_files", temp_file_path
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        # Call the download function
+        module.download_cool_seq_tool_files(is_docker_env=False)
+
+    finally:
+        # Clean up the temporary file
+        os.unlink(temp_file_path)
+
+
 def main(argv=sys.argv[1:]):
     """
     Process the --filename argument (expected as 'gs://..../filename.json.gz')
@@ -385,6 +418,11 @@ def main(argv=sys.argv[1:]):
     outfile = str(pathlib.Path("output") / local_file_name)
     # Make parents
     os.makedirs(os.path.dirname(outfile), exist_ok=True)
+
+    # Initialize the variation-normalizer to use specific snapshotted reference data.
+    initialize_variation_normalizer_ref_data()
+    for k in os.environ:
+        print(f"{k}:{os.environ[k]}")
 
     if opts["parallelism"] == 0:
         process_as_json_single_thread(local_file_name, outfile)
