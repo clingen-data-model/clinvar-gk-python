@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import gzip
+import importlib.util
 import json
 import logging
 import multiprocessing
@@ -8,6 +9,7 @@ import os
 import pathlib
 import queue
 import sys
+import tempfile
 from functools import partial
 from typing import List
 
@@ -81,12 +83,25 @@ def _task_worker(
         return_queue.put(task())
 
 
-# Define init function to set up QueryHandler in this process
+# Define init function to set up QueryHandler and event loop in this process
 def init_query_handler():
     from variation.query import QueryHandler
 
-    global query_handler
+    global query_handler, event_loop
     query_handler = QueryHandler()
+
+    # Create a persistent event loop for this worker process
+    event_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(event_loop)
+
+
+def run_async_with_persistent_loop(coro):
+    """
+    Run an async coroutine using the persistent event loop for this worker process.
+    This replaces asyncio.run() calls to avoid creating/destroying event loops repeatedly.
+    """
+    global event_loop
+    return event_loop.run_until_complete(coro)
 
 
 def worker(file_name_gz: str, output_file_name: str, opts: dict = None) -> None:
@@ -254,7 +269,7 @@ def allele(clinvar_json: dict, opts: dict) -> dict:
         elif fmt == "hgvs":
             if opts.get("liftover", False):
                 # do /normalize. This also automatically tries to liftover to GRCh38
-                result = asyncio.run(
+                result = run_async_with_persistent_loop(
                     query_handler.normalize_handler.normalize(
                         q=source,
                     )
@@ -289,7 +304,7 @@ def copy_number_change(clinvar_json: dict, opts: dict) -> dict:
         else:
             return {"errors": f"Unknown variation_type: {clinvar_json}"}
 
-        result = asyncio.run(
+        result = run_async_with_persistent_loop(
             query_handler.to_copy_number_handler.hgvs_to_copy_number_change(
                 hgvs_expr=hgvs_expr,
                 copy_change=copy_change,
@@ -330,7 +345,7 @@ def copy_number_count(clinvar_json: dict, opts: dict) -> dict:
         else:
             return {"errors": f"Unknown variation_type: {clinvar_json}"}
 
-        result = asyncio.run(
+        result = run_async_with_persistent_loop(
             query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
                 hgvs_expr=hgvs_expr,
                 baseline_copies=baseline_copies,
@@ -377,9 +392,6 @@ def partition_file_lines_gz(local_file_path_gz: str, partitions: int) -> List[st
 
 def initialize_variation_normalizer_ref_data():
     """Download and import the variation normalizer reference data script at runtime"""
-    import importlib.util
-    import tempfile
-
     # URL to the script
     script_url = "https://raw.githubusercontent.com/GenomicMedLab/variation-normalizer-manuscript/issue-116/analysis/download_cool_seq_tool_files.py"
 
@@ -429,8 +441,6 @@ def main(argv=sys.argv[1:]):
 
     # Initialize the variation-normalizer to use specific snapshotted reference data.
     initialize_variation_normalizer_ref_data()
-    # for k in os.environ:
-    #     print(f"{k}:{os.environ[k]}")
 
     if opts["parallelism"] == 0:
         process_as_json_single_thread(local_file_name, outfile, opts)
@@ -475,14 +485,5 @@ if __name__ == "__main__":
                 "2",
             ]
         )
-
-        # main(
-        #     [
-        #         "--filename",
-        #         "vi-100000.json.gz",
-        #         "--parallelism",
-        #         "1",
-        #     ]
-        # )
     else:
         main(sys.argv[1:])
