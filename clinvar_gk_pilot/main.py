@@ -236,21 +236,6 @@ def allele(clinvar_json: dict) -> dict:
         return {"errors": str(e)}
 
 
-def copy_number_count_vrspython(clinvar_json: dict) -> dict:
-    try:
-        tlr = cnv_translators[clinvar_json.get("assembly_version", "38")]
-        kwargs = {"copies": clinvar_json["absolute_copies"]}
-        vrs = tlr.translate_from(
-            var=clinvar_json["source"], fmt=clinvar_json["fmt"], **kwargs
-        )
-        return vrs.model_dump(exclude_none=True)
-    except Exception as e:
-        logger.error(
-            f"Exception raised in 'copy_number_count' processing: {clinvar_json}: {e}"
-        )
-        return {"errors": str(e)}
-
-
 def copy_number_change(clinvar_json: dict) -> dict:
     """
     Create a VRS CopyNumberChange variation using the variation-normalization module.
@@ -328,21 +313,6 @@ def copy_number_count(clinvar_json: dict) -> dict:
         return {"errors": error_msg}
 
 
-def copy_number_change_vrspython(clinvar_json: dict) -> dict:
-    try:
-        tlr = cnv_translators[clinvar_json.get("assembly_version", "38")]
-        kwargs = {"copy_change": clinvar_json["copy_change_type"]}
-        vrs = tlr.translate_from(
-            var=clinvar_json["source"], fmt=clinvar_json["fmt"], **kwargs
-        )
-        return vrs.model_dump(exclude_none=True)
-    except Exception as e:
-        logger.error(
-            f"Exception raised in 'copy_number_change' processing: {clinvar_json}: {e}"
-        )
-        return {"errors": str(e)}
-
-
 def partition_file_lines_gz(local_file_path_gz: str, partitions: int) -> List[str]:
     """
     Split `local_file_path_gz` into `partitions` roughly equal parts by line count.
@@ -376,7 +346,7 @@ def initialize_variation_normalizer_ref_data():
     script_url = "https://raw.githubusercontent.com/GenomicMedLab/variation-normalizer-manuscript/issue-116/analysis/download_cool_seq_tool_files.py"
 
     # Download the script
-    response = requests.get(script_url)
+    response = requests.get(script_url, timeout=30)
     response.raise_for_status()
 
     # Create a temporary file and write the script content
