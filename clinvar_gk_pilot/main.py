@@ -8,7 +8,6 @@ import os
 import pathlib
 import queue
 import sys
-from dataclasses import dataclass
 from functools import partial
 from typing import List
 
@@ -47,7 +46,7 @@ cnv_translators = {
 }
 
 
-def process_line(line: str) -> str:
+def process_line(line: str, opts: dict = None) -> str:
     """
     Takes a line of JSON, processes it, and returns the result as a JSON string.
     """
@@ -56,11 +55,11 @@ def process_line(line: str) -> str:
     if clinvar_json.get("issue") is None:
         cls = clinvar_json["vrs_class"]
         if cls == "Allele":
-            result = allele(clinvar_json)
+            result = allele(clinvar_json, opts or {})
         elif cls == "CopyNumberChange":
-            result = copy_number_change(clinvar_json)
+            result = copy_number_change(clinvar_json, opts or {})
         elif cls == "CopyNumberCount":
-            result = copy_number_count(clinvar_json)
+            result = copy_number_count(clinvar_json, opts or {})
     content = {"in": clinvar_json, "out": result}
     return json.dumps(content)
 
@@ -90,7 +89,7 @@ def init_query_handler():
     query_handler = QueryHandler()
 
 
-def worker(file_name_gz: str, output_file_name: str) -> None:
+def worker(file_name_gz: str, output_file_name: str, opts: dict = None) -> None:
     """
     Takes an input file (a GZIP file of newline delimited), runs `process_line`
     on each line, and writes the output to a new GZIP file called `output_file_name`.
@@ -134,7 +133,7 @@ def worker(file_name_gz: str, output_file_name: str) -> None:
         for line in input_file:
             line_number += 1
             file_logger.info(f"Processing line (index: {line_number}): {line}")
-            task_queue.put(partial(process_line, line))
+            task_queue.put(partial(process_line, line, opts))
             try:
                 ret = return_queue.get(timeout=task_timeout)
             except queue.Empty:
@@ -163,17 +162,19 @@ def worker(file_name_gz: str, output_file_name: str) -> None:
         file_logger.removeHandler(file_handler)
 
 
-def process_as_json_single_thread(input_file_name: str, output_file_name: str) -> None:
+def process_as_json_single_thread(
+    input_file_name: str, output_file_name: str, opts: dict = None
+) -> None:
     with gzip.open(input_file_name, "rt", encoding="utf-8") as f_in:
         with gzip.open(output_file_name, "wt", encoding="utf-8") as f_out:
             for line in f_in:
-                f_out.write(process_line(line))
+                f_out.write(process_line(line, opts))
                 f_out.write("\n")
     print(f"Output written to {output_file_name}")
 
 
 def process_as_json(
-    input_file_name: str, output_file_name: str, parallelism: int
+    input_file_name: str, output_file_name: str, parallelism: int, opts: dict = None
 ) -> None:
     """
     Process `input_file_name` in parallel and write the results to `output_file_name`.
@@ -190,7 +191,7 @@ def process_as_json(
     for i, (part_ifn, part_ofn) in enumerate(
         zip(part_input_file_names, part_output_file_names)
     ):
-        w = multiprocessing.Process(target=worker, args=(part_ifn, part_ofn))
+        w = multiprocessing.Process(target=worker, args=(part_ifn, part_ofn, opts))
         w.start()
         workers.append(w)
         worker_info.append((i, w, part_ifn))
@@ -226,17 +227,50 @@ def process_as_json(
     print(f"Output written to {output_file_name}")
 
 
-def allele(clinvar_json: dict) -> dict:
+# def allele(clinvar_json: dict, opts: dict) -> dict:
+#     try:
+#         tlr = allele_translators[clinvar_json.get("assembly_version", "38")]
+#         vrs = tlr.translate_from(var=clinvar_json["source"], fmt=clinvar_json["fmt"])
+#         return vrs.model_dump(exclude_none=True)
+#     except Exception as e:
+#         logger.error(f"Exception raised in 'allele' processing: {clinvar_json}: {e}")
+#         return {"errors": str(e)}
+
+
+def allele(clinvar_json: dict, opts: dict) -> dict:
     try:
-        tlr = allele_translators[clinvar_json.get("assembly_version", "38")]
-        vrs = tlr.translate_from(var=clinvar_json["source"], fmt=clinvar_json["fmt"])
-        return vrs.model_dump(exclude_none=True)
+        assembly_version = clinvar_json.get("assembly_version", "38")
+        source = clinvar_json["source"]
+        fmt = clinvar_json["fmt"]
+
+        if fmt == "spdi" or not opts.get("liftover", False):
+            if fmt == "spdi" and assembly_version != "38":
+                raise ValueError(
+                    f"Unexpected assembly '{assembly_version}' for SPDI expression {source}"
+                )
+            return query_handler.vrs_python_tlr.translate_from(
+                source, fmt=fmt
+            ).model_dump(exclude_none=True)
+        elif fmt == "hgvs":
+            if opts.get("liftover", False):
+                # do /normalize. This also automatically tries to liftover to GRCh38
+                result = asyncio.run(
+                    query_handler.normalize_handler.normalize(
+                        q=source,
+                    )
+                )
+                if result.variation:
+                    return result.variation.model_dump(exclude_none=True)
+                else:
+                    return {"errors": json.dumps(result.warnings)}
+        else:
+            raise ValueError(f"Unsupported format: {fmt}")
     except Exception as e:
         logger.error(f"Exception raised in 'allele' processing: {clinvar_json}: {e}")
         return {"errors": str(e)}
 
 
-def copy_number_change(clinvar_json: dict) -> dict:
+def copy_number_change(clinvar_json: dict, opts: dict) -> dict:
     """
     Create a VRS CopyNumberChange variation using the variation-normalization module.
 
@@ -257,7 +291,9 @@ def copy_number_change(clinvar_json: dict) -> dict:
 
         result = asyncio.run(
             query_handler.to_copy_number_handler.hgvs_to_copy_number_change(
-                hgvs_expr=hgvs_expr, copy_change=copy_change
+                hgvs_expr=hgvs_expr,
+                copy_change=copy_change,
+                do_liftover=opts.get("liftover", False),
             )
         )
         if result.copy_number_change:
@@ -266,7 +302,7 @@ def copy_number_change(clinvar_json: dict) -> dict:
                 vrs_variant.location.sequence = None
             return vrs_variant.model_dump(exclude_none=True)
         else:
-            return {"errors": result.warnings}
+            return {"errors": json.dumps(result.warnings)}
 
     except Exception as e:
         error_msg = f"Unexpected error: {e}"
@@ -274,7 +310,7 @@ def copy_number_change(clinvar_json: dict) -> dict:
         return {"errors": error_msg}
 
 
-def copy_number_count(clinvar_json: dict) -> dict:
+def copy_number_count(clinvar_json: dict, opts: dict) -> dict:
     """
     Create a VRS CopyNumberCount variation using the variation-normalization service.
 
@@ -296,7 +332,9 @@ def copy_number_count(clinvar_json: dict) -> dict:
 
         result = asyncio.run(
             query_handler.to_copy_number_handler.hgvs_to_copy_number_count(
-                hgvs_expr=hgvs_expr, baseline_copies=baseline_copies
+                hgvs_expr=hgvs_expr,
+                baseline_copies=baseline_copies,
+                do_liftover=opts.get("liftover", False),
             )
         )
         if result.copy_number_count:
@@ -305,7 +343,7 @@ def copy_number_count(clinvar_json: dict) -> dict:
                 vrs_variant.location.sequence = None
             return vrs_variant.model_dump(exclude_none=True)
         else:
-            return {"errors": result.warnings}
+            return {"errors": json.dumps(result.warnings)}
 
     except Exception as e:
         error_msg = f"Unexpected error: {e}"
@@ -391,13 +429,13 @@ def main(argv=sys.argv[1:]):
 
     # Initialize the variation-normalizer to use specific snapshotted reference data.
     initialize_variation_normalizer_ref_data()
-    for k in os.environ:
-        print(f"{k}:{os.environ[k]}")
+    # for k in os.environ:
+    #     print(f"{k}:{os.environ[k]}")
 
     if opts["parallelism"] == 0:
-        process_as_json_single_thread(local_file_name, outfile)
+        process_as_json_single_thread(local_file_name, outfile, opts)
     else:
-        process_as_json(local_file_name, outfile, opts["parallelism"])
+        process_as_json(local_file_name, outfile, opts["parallelism"], opts)
 
 
 if __name__ == "__main__":
