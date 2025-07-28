@@ -263,9 +263,10 @@ def allele(clinvar_json: dict, opts: dict) -> dict:
                 raise ValueError(
                     f"Unexpected assembly '{assembly_version}' for SPDI expression {source}"
                 )
-            return query_handler.vrs_python_tlr.translate_from(
-                source, fmt=fmt
-            ).model_dump(exclude_none=True)
+            vrs_variant = query_handler.vrs_python_tlr.translate_from(source, fmt=fmt)
+            if vrs_variant.location.sequence:
+                vrs_variant.location.sequence = None
+            return vrs_variant.model_dump(exclude_none=True)
         elif fmt == "hgvs":
             if opts.get("liftover", False):
                 # do /normalize. This also automatically tries to liftover to GRCh38
@@ -275,7 +276,10 @@ def allele(clinvar_json: dict, opts: dict) -> dict:
                     )
                 )
                 if result.variation:
-                    return result.variation.model_dump(exclude_none=True)
+                    vrs_variant = result.variation
+                    if vrs_variant.location.sequence:
+                        vrs_variant.location.sequence = None
+                    return vrs_variant.model_dump(exclude_none=True)
                 else:
                     return {"errors": json.dumps(result.warnings)}
         else:
