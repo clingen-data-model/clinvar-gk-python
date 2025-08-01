@@ -54,7 +54,8 @@ def process_line(line: str, opts: dict = None) -> str:
     """
     clinvar_json = json.loads(line)
     result = None
-    if clinvar_json.get("issue") is None:
+    # if clinvar_json.get("issue") is None:
+    if True:
         cls = clinvar_json["vrs_class"]
         if cls == "Allele":
             result = allele(clinvar_json, opts or {})
@@ -242,16 +243,6 @@ def process_as_json(
     print(f"Output written to {output_file_name}")
 
 
-# def allele(clinvar_json: dict, opts: dict) -> dict:
-#     try:
-#         tlr = allele_translators[clinvar_json.get("assembly_version", "38")]
-#         vrs = tlr.translate_from(var=clinvar_json["source"], fmt=clinvar_json["fmt"])
-#         return vrs.model_dump(exclude_none=True)
-#     except Exception as e:
-#         logger.error(f"Exception raised in 'allele' processing: {clinvar_json}: {e}")
-#         return {"errors": str(e)}
-
-
 def allele(clinvar_json: dict, opts: dict) -> dict:
     try:
         assembly_version = clinvar_json.get("assembly_version", "38")
@@ -285,8 +276,9 @@ def allele(clinvar_json: dict, opts: dict) -> dict:
         else:
             raise ValueError(f"Unsupported format: {fmt}")
     except Exception as e:
-        logger.error(f"Exception raised in 'allele' processing: {clinvar_json}: {e}")
-        return {"errors": str(e)}
+        error_msg = f"Unexpected error: {repr(e)}"
+        logger.error(f"Exception in allele: {clinvar_json}: {error_msg}")
+        return {"errors": error_msg}
 
 
 def copy_number_change(clinvar_json: dict, opts: dict) -> dict:
@@ -324,7 +316,7 @@ def copy_number_change(clinvar_json: dict, opts: dict) -> dict:
             return {"errors": json.dumps(result.warnings)}
 
     except Exception as e:
-        error_msg = f"Unexpected error: {e}"
+        error_msg = f"Unexpected error: {repr(e)}"
         logger.error(f"Exception in copy_number_change: {clinvar_json}: {error_msg}")
         return {"errors": error_msg}
 
@@ -365,7 +357,7 @@ def copy_number_count(clinvar_json: dict, opts: dict) -> dict:
             return {"errors": json.dumps(result.warnings)}
 
     except Exception as e:
-        error_msg = f"Unexpected error: {e}"
+        error_msg = f"Unexpected error: {repr(e)}"
         logger.error(f"Exception in copy_number_count: {clinvar_json}: {error_msg}")
         return {"errors": error_msg}
 
