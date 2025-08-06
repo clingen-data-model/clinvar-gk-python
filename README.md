@@ -42,7 +42,7 @@ Set up the required environment variables. You can use the provided `env.sh` as 
 
 ```bash
 # SeqRepo configuration - Update path to your local SeqRepo installation
-export SEQREPO_ROOT_DIR=/Users/kferrite/dev/data/seqrepo/2024-12-20
+export SEQREPO_ROOT_DIR=/usr/local/share/seqrepo/2024-12-20
 export SEQREPO_DATAPROXY_URL=seqrepo+file://${SEQREPO_ROOT_DIR}
 
 # Database URLs (using the Docker compose services)
@@ -147,7 +147,4 @@ Check and fix code quality issues:
 ```
 
 The lint script runs:
-- black (code formatting)
-- isort (import sorting)  
-- ruff (fast linter)
-- pylint (code analysis)
+- black, isort, ruff, pylint
