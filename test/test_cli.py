@@ -6,4 +6,5 @@ def test_parse_args():
     opts = parse_args(argv)
     assert opts["filename"] == "test.txt"
     assert opts["parallelism"] == 1
-    assert len(opts) == 2
+    assert opts["liftover"] is False
+    assert len(opts) == 3
