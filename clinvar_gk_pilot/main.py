@@ -389,10 +389,10 @@ def partition_file_lines_gz(local_file_path_gz: str, partitions: int) -> List[st
 def initialize_variation_normalizer_ref_data():
     """Download and import the variation normalizer reference data script at runtime"""
     # URL to the script
-    script_url = "https://raw.githubusercontent.com/GenomicMedLab/variation-normalizer-manuscript/issue-116/analysis/download_cool_seq_tool_files.py"
+    script_url = "https://raw.githubusercontent.com/GenomicMedLab/variation-normalizer-manuscript/a5b4f40e696c3c607e770e48e66efcf03a56336f/analysis/download_cool_seq_tool_files.py"
 
     # Download the script
-    response = requests.get(script_url, timeout=30)
+    response = requests.get(script_url, timeout=10)
     response.raise_for_status()
 
     # Create a temporary file and write the script content
