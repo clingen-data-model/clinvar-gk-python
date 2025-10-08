@@ -1,0 +1,24 @@
+#!/bin/bash
+
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 RELEASE_DATE" >&2
+    exit 1
+fi
+
+release_date="$1"
+
+bucket_root="clinvar-gks/${release_date}/dev"
+gs_prefix="gs://${bucket_root}"
+input_file="${gs_prefix}/vi.jsonl.gz"
+log_file="${release_date}-noliftover.log"
+
+uv run python clinvar_gk_pilot/main.py \
+    --filename "${input_file}" \
+    --parallelism 2 2>&1 \
+    | tee "${log_file}"
+
+outfile="output/buckets/${bucket_root}/vi.jsonl.gz"
+dest_path="${gs_prefix}/vi-normalized-no-liftover.jsonl.gz"
+
+gcloud storage cp "${outfile}" "${dest_path}"
+echo "Wrote to ${dest_path}"
