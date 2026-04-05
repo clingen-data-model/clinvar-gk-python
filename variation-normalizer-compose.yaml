@@ -21,8 +21,8 @@ services:
 
     volumes:
       - uta_vol:/var/lib/postgresql/data
-      # - /usr/local/share/seqrepo:/usr/local/share/seqrepo
-      - /Users/kferrite/dev/data/seqrepo:/usr/local/share/seqrepo:ro
+      # Update this path to your local SeqRepo installation
+      - /usr/local/share/seqrepo:/usr/local/share/seqrepo:ro
 
   uta:
     # Test:
