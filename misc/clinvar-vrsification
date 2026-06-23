@@ -1,6 +1,28 @@
 #!/bin/bash
+#
+# Run ClinVar VRS-ification for a given release date.
+#
+# Required environment variables:
+#   export SEQREPO_ROOT_DIR=/usr/local/share/seqrepo/2024-12-20
+#   export SEQREPO_DATAPROXY_URL=seqrepo+file://${SEQREPO_ROOT_DIR}
+#   export HGVS_SEQREPO_DIR=/usr/local/share/seqrepo/2024-12-20
+#   export GENE_NORM_DB_URL=http://localhost:8000
+#   export UTA_DB_URL=postgresql://anonymous:anonymous@localhost:5434/uta/uta_20241220
+#
+# HGVS_SEQREPO_DIR is required to prevent the hgvs library from falling back
+# to fetching sequences from NCBI eutils over the network, which is very slow.
+#
+# Ensure the variation-normalizer services are running:
+#   podman-compose -f variation-normalizer-compose.yaml up -d
+#
 
 set -euo pipefail
+
+# Fake AWS credentials to prevent boto3 from using real ~/.aws/credentials
+# and attempting to connect to AWS DynamoDB instead of the local endpoint.
+export AWS_ACCESS_KEY_ID=DUMMYIDEXAMPLE
+export AWS_SECRET_ACCESS_KEY=DUMMYEXAMPLEKEY
+export AWS_DEFAULT_REGION=us-east-2
 
 if [ $# -lt 1 ]; then
     echo "Usage: $0 RELEASE_DATE" >&2

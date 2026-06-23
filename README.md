@@ -66,6 +66,10 @@ Set up the required environment variables. You can use the provided `env.sh` as 
 export SEQREPO_ROOT_DIR=/usr/local/share/seqrepo/2024-12-20
 export SEQREPO_DATAPROXY_URL=seqrepo+file://${SEQREPO_ROOT_DIR}
 
+# Required by the hgvs library to use local SeqRepo instead of fetching
+# sequences from NCBI eutils over the network (which is very slow)
+export HGVS_SEQREPO_DIR=/usr/local/share/seqrepo/2024-12-20
+
 # Database URLs (using the Docker compose services)
 export UTA_DB_URL=postgresql://anonymous:anonymous@localhost:5432/uta/uta_20241220
 export GENE_NORM_DB_URL=http://localhost:8000
