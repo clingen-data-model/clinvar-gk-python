@@ -467,12 +467,16 @@ if __name__ == "__main__":
         )
 
     # Parse args early to check if --liftover is enabled
-    argv = sys.argv[1:] if len(sys.argv) > 1 else [
-        "--filename",
-        "gs://clinvar-gk-pilot/2025-03-23/dev/vi.json.gz",
-        "--parallelism",
-        "2",
-    ]
+    argv = (
+        sys.argv[1:]
+        if len(sys.argv) > 1
+        else [
+            "--filename",
+            "gs://clinvar-gk-pilot/2025-03-23/dev/vi.json.gz",
+            "--parallelism",
+            "2",
+        ]
+    )
     opts = parse_args(argv)
 
     if "GENE_NORM_DB_URL" not in os.environ:
