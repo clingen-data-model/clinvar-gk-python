@@ -484,7 +484,7 @@ if __name__ == "__main__":
     if opts["liftover"]:
         if "UTA_DB_URL" not in os.environ:
             raise RuntimeError(
-                "Must set UTA_DB_URL (e.g. postgresql://anonymous@localhost:5433/uta/uta_20241220)"
+                "Must set UTA_DB_URL (e.g. postgresql://anonymous@localhost:5434/uta/uta_20241220)"
             )
 
     main(argv)
