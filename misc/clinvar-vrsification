@@ -5,7 +5,7 @@
 # Required environment variables:
 #   export SEQREPO_ROOT_DIR=/usr/local/share/seqrepo/2024-12-20
 #   export SEQREPO_DATAPROXY_URL=seqrepo+file://${SEQREPO_ROOT_DIR}
-#   export HGVS_SEQREPO_DIR=/usr/local/share/seqrepo/2024-12-20
+#   export HGVS_SEQREPO_DIR=${SEQREPO_ROOT_DIR}
 #   export GENE_NORM_DB_URL=http://localhost:8000
 #   export UTA_DB_URL=postgresql://anonymous:anonymous@localhost:5434/uta/uta_20241220
 #
