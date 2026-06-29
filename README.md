@@ -68,7 +68,7 @@ export SEQREPO_DATAPROXY_URL=seqrepo+file://${SEQREPO_ROOT_DIR}
 
 # Required by the hgvs library to use local SeqRepo instead of fetching
 # sequences from NCBI eutils over the network (which is very slow)
-export HGVS_SEQREPO_DIR=/usr/local/share/seqrepo/2024-12-20
+export HGVS_SEQREPO_DIR=${SEQREPO_ROOT_DIR}
 
 # Database URLs (using the Docker compose services)
 export UTA_DB_URL=postgresql://anonymous:anonymous@localhost:5432/uta/uta_20241220
