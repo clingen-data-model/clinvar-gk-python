@@ -480,7 +480,7 @@ if __name__ == "__main__":
     opts = parse_args(argv)
 
     if "GENE_NORM_DB_URL" not in os.environ:
-        raise RuntimeError("Must set GENE_NORM_DB_URL (e.g. http://localhost:8001)")
+        raise RuntimeError("Must set GENE_NORM_DB_URL (e.g. http://localhost:8000)")
     if opts["liftover"]:
         if "UTA_DB_URL" not in os.environ:
             raise RuntimeError(
