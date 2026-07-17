@@ -27,9 +27,9 @@ pip install -e '.[dev]'
 
 ### Database Services Setup
 
-This project requires two database services (UTA and Gene Normalizer) that can be set up using the `variation-normalizer-compose.yaml` included in this repository. The compose file also includes a Variation Normalizer API service, but this project uses the variation-normalization Python library directly and does not require the API container.
+This project requires two database services (UTA and Gene Normalizer) that can be set up using the `variation-normalizer-compose.yaml` included in this repository. That file is based on the [variation-normalization 0.15.0 compose file](https://raw.githubusercontent.com/cancervariants/variation-normalization/0.15.0/compose.yaml) and is maintained here with this project's local setup changes. The compose file also includes a Variation Normalizer API service, but this project uses the variation-normalization Python library directly and does not require the API container.
 
-Before starting, update the SeqRepo volume mount in `variation-normalizer-compose.yaml` to point to your local SeqRepo installation. The `uta-setup.sql` file referenced by the compose file is also included in this repository.
+Before starting, update the SeqRepo volume mount in `variation-normalizer-compose.yaml` to point to your local SeqRepo installation.
 
 1. Create the external volume required by the UTA service:
 
@@ -38,43 +38,70 @@ docker volume create uta_vol
 ```
 (*or `podman volume create uta_vol` for podman*)
 
-1. Start the required services:
+1. Download the `uta_20241220.pgd.gz` snapshot from the [UTA local-installation instructions](https://github.com/biocommons/uta#installing-uta-locally) in a browser. The UTA download site requires human verification. Set `UTA_SNAPSHOT_PATH` to its absolute path:
 
 ```bash
-docker compose -f variation-normalizer-compose.yaml up -d
+export UTA_SNAPSHOT_PATH=/path/to/uta_20241220.pgd.gz
 ```
-(*or `uvx podman-compose -f variation-normalizer-compose.yaml up -d` for podman*)
+
+1. Initialize the UTA volume and start the required services. The initialization override is required only for this first start:
+
+```bash
+docker compose \
+  -f variation-normalizer-compose.yaml \
+  -f variation-normalizer-uta-init.yaml up -d
+```
+(*or `podman compose -f variation-normalizer-compose.yaml -f variation-normalizer-uta-init.yaml up -d` for podman*)
 
 This will start:
 - **UTA database** (port 5434): Universal Transcript Archive for transcript mapping
 - **Gene Normalizer database** (port 8000): Gene normalization service
 - **Variation Normalizer API** (port 8001): Not required by this project, but started by the compose file
 
-#### Known Issue: UTA Data Download Failure
+#### Initialize UTA data
 
-The UTA container downloads a large database dump (~344MB) from `dl.biocommons.org` on first startup. This download may fail due to a human-verification gate on the biocommons download server, resulting in the UTA schema not being loaded. You can check by running:
-
-```bash
-psql -XAt postgres://anonymous@localhost:5434/uta -c 'select count(*) from uta_20241220.transcript'
-# Expected output: 329090
-```
-
-If the schema is missing, you'll need to download the dump manually and restore it:
+On the first start with a new `uta_vol`, the UTA image restores the snapshot and then runs this project's `uta-setup.sql` initialization script. This can take several minutes (longer under architecture emulation, e.g. amd64 images on Apple Silicon). Wait for the UTA logs to report `You may now connect to uta`, then stop following the logs with <kbd>Ctrl</kbd>-<kbd>C</kbd>:
 
 ```bash
-# Download the dump (you may need to open this URL in a browser first to pass verification)
-curl -L -o /tmp/uta_20241220.pgd.gz https://dl.biocommons.org/uta/uta_20241220.pgd.gz
+docker compose -f variation-normalizer-compose.yaml logs -f uta
+```
+(*or `podman compose -f variation-normalizer-compose.yaml logs -f uta` for podman*)
 
-# Verify it's a valid gzip file (should say "gzip compressed data", not "HTML document")
-file /tmp/uta_20241220.pgd.gz
+Confirm that both the restored UTA schema and this project's additional setup are present:
 
-# Copy into the container and restore
-docker cp /tmp/uta_20241220.pgd.gz <uta_container_name>:/tmp/uta_20241220.pgd.gz
-docker exec <uta_container_name> bash -c \
-  'gzip -cdq /tmp/uta_20241220.pgd.gz | psql -1e -U uta_admin -d uta -v ON_ERROR_STOP=1'
+```bash
+psql -XAt postgres://anonymous@localhost:5434/uta -c "
+SELECT
+  (SELECT count(*) = 329090 FROM uta_20241220.transcript) AS transcript_restored,
+  to_regclass('uta_20241220.genomic') IS NOT NULL AS genomic_table_present,
+  (SELECT count(*) = 3
+     FROM pg_indexes
+    WHERE schemaname = 'uta_20241220'
+      AND tablename = 'genomic'
+      AND indexname IN ('alt_pos_index', 'gene_alt_index', 'alt_ac_index'))
+    AS genomic_indexes_present;"
+# Expected output: t|t|t
 ```
 
-The restore takes several minutes (longer under architecture emulation, e.g. amd64 images on Apple Silicon).
+If any value is `f`, the volume is incomplete (for example, it was restored using the prior snapshot-only procedure). PostgreSQL does not rerun initialization scripts for an existing data directory, so recreate the local UTA volume and initialize it again. This removes only the local UTA data:
+
+```bash
+docker compose -f variation-normalizer-compose.yaml down
+docker volume rm uta_vol
+docker volume create uta_vol
+```
+(*Use `podman compose` and `podman volume` instead when using podman.*)
+
+Then repeat the snapshot download and two-file initialization command above.
+
+The image consumes the snapshot and runs `uta-setup.sql` only for a new `uta_vol`; both are skipped when reusing an existing volume. Once the verification reports `t|t|t`, start the services normally—without `UTA_SNAPSHOT_PATH` or the initialization override:
+
+```bash
+docker compose -f variation-normalizer-compose.yaml up -d
+```
+(*or `podman compose -f variation-normalizer-compose.yaml up -d` for podman*)
+
+For complete upstream setup and troubleshooting guidance, see the [UTA local-installation instructions](https://github.com/biocommons/uta#installing-uta-locally).
 
 #### Port Conflicts
 

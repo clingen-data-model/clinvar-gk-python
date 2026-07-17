@@ -65,23 +65,28 @@ export SEQREPO_ROOT_DIR=/usr/local/share/seqrepo/2024-12-20
 export SEQREPO_DATAPROXY_URL=seqrepo+file://${SEQREPO_ROOT_DIR}
 
 # Database URLs (from Docker compose services)
-export UTA_DB_URL=postgresql://anonymous:anonymous@localhost:5432/uta/uta_20241220
+export UTA_DB_URL=postgresql://anonymous:anonymous@localhost:5434/uta/uta_20241220
 export GENE_NORM_DB_URL=http://localhost:8000
 ```
 
 ## External Dependencies
 
 ### Required Services
-The project requires these Docker services from variation-normalization:
+The repository includes `variation-normalizer-compose.yaml` for the required Docker services. For a fresh `uta_vol`, download `uta_20241220.pgd.gz` following the [UTA local-installation instructions](https://github.com/biocommons/uta#installing-uta-locally), then set its absolute path and include the initialization override:
+
 ```bash
-curl -o variation-normalizer-compose.yaml https://raw.githubusercontent.com/cancervariants/variation-normalization/0.15.0/compose.yaml
-docker compose -f variation-normalizer-compose.yaml up -d
+export UTA_SNAPSHOT_PATH=/path/to/uta_20241220.pgd.gz
+docker compose \
+  -f variation-normalizer-compose.yaml \
+  -f variation-normalizer-uta-init.yaml up -d
 ```
 
 This starts:
-- UTA database (port 5432): Universal Transcript Archive
+- UTA database (port 5434): Universal Transcript Archive
 - Gene Normalizer database (port 8000): Gene normalization service
 - Variation Normalizer API (port 8001): Variation normalization service
+
+Do not replace the checked-in compose file with the upstream variation-normalization compose file. Configure the local SeqRepo mount in the checked-in file. For a new UTA volume, the UTA image consumes the snapshot and automatically runs `uta-setup.sql`. Subsequent starts use only `variation-normalizer-compose.yaml`. See the [README UTA setup instructions](README.md#database-services-setup) for completion verification and recovery of a snapshot-only volume.
 
 ### Memory Considerations
 When using `--liftover` with high parallelism, increase Docker shared memory:

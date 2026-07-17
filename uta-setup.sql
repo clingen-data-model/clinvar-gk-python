@@ -1,5 +1,5 @@
 \c uta;
-CREATE TABLE uta_20241220.genomic AS
+CREATE TABLE IF NOT EXISTS uta_20241220.genomic AS
 SELECT t.hgnc, aes.alt_ac, aes.alt_aln_method,
     aes.alt_strand, ae.start_i AS alt_start_i,
     ae.end_i AS alt_end_i
@@ -17,9 +17,9 @@ FROM (((((uta_20241220.transcript t
         (((te.exon_id = ea.tx_exon_id) AND
         (ae.exon_id = ea.alt_exon_id))));
 
-CREATE INDEX alt_pos_index ON uta_20241220.genomic (alt_ac, alt_start_i, alt_end_i);
-CREATE INDEX gene_alt_index ON uta_20241220.genomic (hgnc, alt_ac);
-CREATE INDEX alt_ac_index ON uta_20241220.genomic (alt_ac);
+CREATE INDEX IF NOT EXISTS alt_pos_index ON uta_20241220.genomic (alt_ac, alt_start_i, alt_end_i);
+CREATE INDEX IF NOT EXISTS gene_alt_index ON uta_20241220.genomic (hgnc, alt_ac);
+CREATE INDEX IF NOT EXISTS alt_ac_index ON uta_20241220.genomic (alt_ac);
 
 GRANT CONNECT ON DATABASE uta TO anonymous;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA uta_20241220 TO anonymous;
