@@ -7,13 +7,16 @@
 #   export SEQREPO_DATAPROXY_URL=seqrepo+file://${SEQREPO_ROOT_DIR}
 #   export HGVS_SEQREPO_DIR=${SEQREPO_ROOT_DIR}
 #   export GENE_NORM_DB_URL=http://localhost:8000
+#
+# When invoking clinvar-gk-pilot with --liftover, also set:
 #   export UTA_DB_URL=postgresql://anonymous:anonymous@localhost:5434/uta/uta_20241220
 #
 # HGVS_SEQREPO_DIR is required to prevent the hgvs library from falling back
 # to fetching sequences from NCBI eutils over the network, which is very slow.
 #
-# Ensure the variation-normalizer services are running:
-#   podman-compose -f variation-normalizer-compose.yaml up -d
+# Ensure the variation-normalizer services are running. The base Compose start
+# assumes that uta_vol was initialized previously; see README.md for first-time setup.
+#   podman compose -f variation-normalizer-compose.yaml up -d
 #
 
 set -euo pipefail

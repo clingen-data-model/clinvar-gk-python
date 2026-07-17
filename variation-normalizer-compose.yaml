@@ -21,8 +21,7 @@ services:
 
     volumes:
       - uta_vol:/var/lib/postgresql/data
-      # - /usr/local/share/seqrepo:/usr/local/share/seqrepo
-      # - /Users/kferrite/dev/data/seqrepo:/usr/local/share/seqrepo:ro
+      # Set SEQREPO_ROOT_DIR to the versioned SeqRepo directory; its parent is mounted.
       - ${SEQREPO_ROOT_DIR}/..:/usr/local/share/seqrepo:ro
 
   uta:
@@ -34,7 +33,6 @@ services:
       - POSTGRES_PASSWORD=some-password-that-you-make-up
     volumes:
       - uta_vol:/var/lib/postgresql/data
-      - ./uta-setup.sql:/docker-entrypoint-initdb.d/uta-setup.sql
     ports:
       - 5434:5432
 
