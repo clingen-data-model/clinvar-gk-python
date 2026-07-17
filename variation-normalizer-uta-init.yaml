@@ -1,0 +1,7 @@
+services:
+  uta:
+    volumes:
+      # PostgreSQL processes init scripts alphabetically. The parent image's
+      # load-uta.sh restores the snapshot first; 99-uta-setup.sql then runs last.
+      - ${UTA_SNAPSHOT_PATH:?Set UTA_SNAPSHOT_PATH to the absolute path of uta_20241220.pgd.gz}:/tmp/uta_20241220.pgd.gz:ro
+      - ./uta-setup.sql:/docker-entrypoint-initdb.d/99-uta-setup.sql:ro
