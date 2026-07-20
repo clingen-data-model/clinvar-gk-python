@@ -63,6 +63,7 @@ clinvar-gk-pilot --filename input.ndjson.gz --parallelism 2 --liftover
 # SeqRepo configuration
 export SEQREPO_ROOT_DIR=/usr/local/share/seqrepo/2024-12-20
 export SEQREPO_DATAPROXY_URL=seqrepo+file://${SEQREPO_ROOT_DIR}
+export HGVS_SEQREPO_DIR=${SEQREPO_ROOT_DIR}
 
 # Database URLs (from Docker compose services)
 export UTA_DB_URL=postgresql://anonymous:anonymous@localhost:5434/uta/uta_20241220
@@ -86,7 +87,7 @@ This starts:
 - Gene Normalizer database (port 8000): Gene normalization service
 - Variation Normalizer API (port 8001): Variation normalization service
 
-Do not replace the checked-in compose file with the upstream variation-normalization compose file. Configure the local SeqRepo mount in the checked-in file. For a new UTA volume, the UTA image consumes the snapshot and automatically runs `uta-setup.sql`. Subsequent starts use only `variation-normalizer-compose.yaml`. See the [README UTA setup instructions](README.md#database-services-setup) for completion verification and recovery of a snapshot-only volume.
+Do not replace the checked-in compose file with the upstream variation-normalization compose file. Set `SEQREPO_ROOT_DIR` to the versioned local SeqRepo directory; the checked-in Compose file mounts its parent directory read-only. For a new UTA volume, the UTA image consumes the snapshot and automatically runs `uta-setup.sql`. Subsequent starts use only `variation-normalizer-compose.yaml` and assume an initialized UTA volume. See the [README UTA setup instructions](README.md#database-services-setup) for completion verification and recovery of a snapshot-only volume.
 
 ### Memory Considerations
 When using `--liftover` with high parallelism, increase Docker shared memory:

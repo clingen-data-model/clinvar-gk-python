@@ -29,7 +29,11 @@ pip install -e '.[dev]'
 
 This project requires two database services (UTA and Gene Normalizer) that can be set up using the `variation-normalizer-compose.yaml` included in this repository. That file is based on the [variation-normalization 0.15.0 compose file](https://raw.githubusercontent.com/cancervariants/variation-normalization/0.15.0/compose.yaml) and is maintained here with this project's local setup changes. The compose file also includes a Variation Normalizer API service, but this project uses the variation-normalization Python library directly and does not require the API container.
 
-Before starting, update the SeqRepo volume mount in `variation-normalizer-compose.yaml` to point to your local SeqRepo installation.
+Before starting, set `SEQREPO_ROOT_DIR` to your versioned local SeqRepo directory. The Compose file mounts its parent directory read-only; do not edit the Compose file for a machine-specific path.
+
+```bash
+export SEQREPO_ROOT_DIR=/usr/local/share/seqrepo/2024-12-20
+```
 
 1. Create the external volume required by the UTA service:
 
@@ -94,7 +98,7 @@ docker volume create uta_vol
 
 Then repeat the snapshot download and two-file initialization command above.
 
-The image consumes the snapshot and runs `uta-setup.sql` only for a new `uta_vol`; both are skipped when reusing an existing volume. Once the verification reports `t|t|t`, start the services normally—without `UTA_SNAPSHOT_PATH` or the initialization override:
+The image consumes the snapshot and runs `uta-setup.sql` only for a new `uta_vol`; both are skipped when reusing an existing volume. Once the verification reports `t|t|t`, start the services normally—without `UTA_SNAPSHOT_PATH` or the initialization override. Base Compose starts assume this initialized UTA volume:
 
 ```bash
 docker compose -f variation-normalizer-compose.yaml up -d
@@ -130,6 +134,10 @@ Set up the required environment variables:
 # SeqRepo configuration - Update path to your local SeqRepo installation
 export SEQREPO_ROOT_DIR=/usr/local/share/seqrepo/2024-12-20
 export SEQREPO_DATAPROXY_URL=seqrepo+file://${SEQREPO_ROOT_DIR}
+
+# Required by the hgvs library to use local SeqRepo instead of fetching
+# sequences from NCBI eutils over the network (which is very slow)
+export HGVS_SEQREPO_DIR=${SEQREPO_ROOT_DIR}
 
 # Database URLs (using the Docker compose services)
 export UTA_DB_URL=postgresql://anonymous:anonymous@localhost:5434/uta/uta_20241220

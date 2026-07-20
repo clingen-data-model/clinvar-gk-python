@@ -461,25 +461,30 @@ if __name__ == "__main__":
     os.environ["AWS_SHARED_CREDENTIALS_FILE"] = str(
         pathlib.Path.cwd() / aws_fake_creds_filename
     )
-    if "GENE_NORM_DB_URL" not in os.environ:
-        raise RuntimeError("Must set GENE_NORM_DB_URL (e.g. http://localhost:8001)")
     if "SEQREPO_ROOT_DIR" not in os.environ:
         raise RuntimeError(
             "Must set SEQREPO_ROOT_DIR (e.g. /Users/kferrite/dev/data/seqrepo/2024-12-20)"
         )
-    if "UTA_DB_URL" not in os.environ:
-        raise RuntimeError(
-            "Must set UTA_DB_URL (e.g. postgresql://anonymous@localhost:5433/uta/uta_20241220)"
-        )
 
-    if len(sys.argv) == 1:
-        main(
-            [
-                "--filename",
-                "gs://clinvar-gk-pilot/2025-03-23/dev/vi.json.gz",
-                "--parallelism",
-                "2",
-            ]
-        )
-    else:
-        main(sys.argv[1:])
+    # Parse args early to check if --liftover is enabled
+    argv = (
+        sys.argv[1:]
+        if len(sys.argv) > 1
+        else [
+            "--filename",
+            "gs://clinvar-gk-pilot/2025-03-23/dev/vi.json.gz",
+            "--parallelism",
+            "2",
+        ]
+    )
+    opts = parse_args(argv)
+
+    if "GENE_NORM_DB_URL" not in os.environ:
+        raise RuntimeError("Must set GENE_NORM_DB_URL (e.g. http://localhost:8000)")
+    if opts["liftover"]:
+        if "UTA_DB_URL" not in os.environ:
+            raise RuntimeError(
+                "Must set UTA_DB_URL (e.g. postgresql://anonymous@localhost:5434/uta/uta_20241220)"
+            )
+
+    main(argv)
