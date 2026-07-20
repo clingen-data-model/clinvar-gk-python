@@ -22,7 +22,7 @@ services:
     volumes:
       - uta_vol:/var/lib/postgresql/data
       # Set SEQREPO_ROOT_DIR to the versioned SeqRepo directory; its parent is mounted.
-      - ${SEQREPO_ROOT_DIR}/..:/usr/local/share/seqrepo:ro
+      - ${SEQREPO_ROOT_DIR:?Set SEQREPO_ROOT_DIR to the versioned SeqRepo directory}/..:/usr/local/share/seqrepo:ro
 
   uta:
     # Test:
