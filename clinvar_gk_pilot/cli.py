@@ -19,6 +19,15 @@ def parse_args(args: List[str]) -> dict:
         ),
     )
     parser.add_argument(
+        "--task-timeout",
+        type=int,
+        default=60,
+        help=(
+            "Seconds to wait for one variant to normalize before recording a timeout "
+            "error and moving on. Default 60."
+        ),
+    )
+    parser.add_argument(
         "--liftover",
         action="store_true",
         help="Enable attempting to liftover non-GRCh38 genomic variants to GRCh38",

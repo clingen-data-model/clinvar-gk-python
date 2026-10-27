@@ -130,19 +130,23 @@ def worker(file_name_gz: str, output_file_name: str, opts: dict = None) -> None:
         gzip.open(file_name_gz, "rt", encoding="utf-8") as input_file,
         gzip.open(output_file_name, "wt", encoding="utf-8") as output_file,
     ):
-        task_queue = multiprocessing.Queue()
-        return_queue = multiprocessing.Queue()
-        task_timeout = 10
+        task_timeout = (opts or {}).get("task_timeout", 60)
 
         def make_background_process():
+            # Fresh queues for every task process. A timed-out task can still put its
+            # result on its return queue before it is terminated; if that queue were
+            # reused, the next line would read the stale result, which duplicates one
+            # variant and drops another from the output.
+            tq = multiprocessing.Queue()
+            rq = multiprocessing.Queue()
             p = multiprocessing.Process(
                 target=_task_worker,
-                args=(task_queue, return_queue, init_query_handler),
+                args=(tq, rq, init_query_handler),
             )
-            return p
+            return p, tq, rq
 
         print("Making background process _task_worker")
-        background_process = make_background_process()
+        background_process, task_queue, return_queue = make_background_process()
         background_process.start()
 
         line_number = -1
@@ -165,7 +169,7 @@ def worker(file_name_gz: str, output_file_name: str, opts: dict = None) -> None:
                     }
                 )
                 print("Restarting background process")
-                background_process = make_background_process()
+                background_process, task_queue, return_queue = make_background_process()
                 background_process.start()
             output_file.write(ret)
             output_file.write("\n")
