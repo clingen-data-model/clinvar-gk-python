@@ -54,7 +54,7 @@ clinvar-gk-pilot --filename input.ndjson.gz --parallelism 2 --liftover
 ### Parallel Processing
 - Uses Python multiprocessing with configurable worker count
 - Files are partitioned by line count across workers
-- Each worker runs with timeout protection (10 seconds per variant)
+- Each worker runs with timeout protection (`--task-timeout`, default 60 seconds per variant)
 - Workers use persistent async event loops for variation-normalization queries
 
 ## Required Environment Variables
